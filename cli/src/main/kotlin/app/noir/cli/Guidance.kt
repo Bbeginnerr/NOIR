@@ -5,6 +5,69 @@ import app.noir.core.Tui
 /** Human-friendly text blocks: every failure should end with an action. */
 object Guidance {
 
+
+    fun about(version: String): String {
+        val total = (Tui.terminalColumns() - 2).coerceIn(50, 100)
+        val inner = total - 4
+
+        fun row(text: String) = "│ " + pad(text, inner) + " │"
+
+        val sb = StringBuilder()
+        sb.append("╭").append("─".repeat(total - 2)).append("╮").append('\n')
+
+        val logo = listOf(
+            "  ███╗   ██╗ ██████╗ ██╗██████╗ ",
+            "  ████╗  ██║██╔═══██╗██║██╔══██╗",
+            "  ██╔██╗ ██║██║   ██║██║██████╔╝",
+            "  ██║╚██╗██║██║   ██║██║██╔══██╗",
+            "  ██║ ╚████║╚██████╔╝██║██║  ██║",
+            "  ╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝"
+        )
+        if (inner >= 40) {
+            logo.forEach { sb.append(row(it)).append('\n') }
+        } else {
+            sb.append(row("  NOIR")).append('\n')
+        }
+
+        sb.append(row("")).append('\n')
+
+        fun field(label: String, value: String) {
+            val prefix = "  " + label.padEnd(10)
+            val lines = wrap(value, inner - prefix.length)
+            if (lines.isEmpty()) {
+                sb.append(row(prefix.trimEnd())).append('\n')
+                return
+            }
+            sb.append(row(prefix + lines.first())).append('\n')
+            lines.drop(1).forEach { sb.append(row(" ".repeat(prefix.length) + it)).append('\n') }
+        }
+
+        field("version", "$version · android leak audit")
+        field("what", "inventories what installed apps can collect, and where they send it")
+        field("not", "a root tool · not a malware scanner · not a firewall")
+        field("writes", "nothing by default; --apply only sets reversible app-ops")
+        field("license", "MIT")
+        field("repo", "github.com/USER/NOIR")
+        field("runs on", "Windows 10/11 · macOS · Debian/Ubuntu")
+
+        sb.append(row("")).append('\n')
+        sb.append(row("  commands")).append('\n')
+        listOf(
+            "noir" to "guided first run",
+            "noir doctor" to "environment check",
+            "noir scan" to "inventory + report",
+            "noir ui" to "dashboard",
+            "noir auto" to "plan (+ --apply)",
+            "noir deep <pkg>" to "jadx dive",
+            "noir setup" to "download adb / jadx"
+        ).forEach { (cmd, desc) ->
+            sb.append(row("    " + cmd.padEnd(18) + desc)).append('\n')
+        }
+
+        sb.append('╰').append("─".repeat(total - 2)).append('╯')
+        return sb.toString()
+    }
+
     fun deviceGuide(): String = """
         |╭─ 没有检测到设备 ──────────────────────────────────────────────╮
         |│                                                              │
@@ -62,22 +125,41 @@ object Guidance {
         return sb.toString()
     }
 
+    /**
+     * Greedy wrap that prefers spaces (English) but still breaks anywhere when a
+     * run of CJK text has no spaces to break on.
+     */
     private fun wrap(text: String, width: Int): List<String> {
         val out = ArrayList<String>()
         text.lines().forEach { line ->
-            val sb = StringBuilder()
-            var used = 0
-            for (c in line) {
-                val cw = charWidth(c)
-                if (used + cw > width) {
-                    out.add(sb.toString())
-                    sb.clear()
-                    used = 0
-                }
-                sb.append(c)
-                used += cw
+            if (line.isEmpty()) {
+                out.add("")
+                return@forEach
             }
-            out.add(sb.toString())
+            var start = 0
+            while (start < line.length) {
+                var i = start
+                var used = 0
+                var lastSpace = -1
+                while (i < line.length) {
+                    val cw = charWidth(line[i])
+                    if (used + cw > width) break
+                    if (line[i] == ' ') lastSpace = i
+                    used += cw
+                    i++
+                }
+                if (i >= line.length) {
+                    out.add(line.substring(start))
+                    break
+                }
+                if (lastSpace > start) {
+                    out.add(line.substring(start, lastSpace))
+                    start = lastSpace + 1
+                } else {
+                    out.add(line.substring(start, i))
+                    start = i
+                }
+            }
         }
         return out
     }

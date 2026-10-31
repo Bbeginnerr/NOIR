@@ -22,6 +22,8 @@ import app.noir.core.platform.Setup
 import java.io.File
 import kotlin.system.exitProcess
 
+private const val VERSION = "0.1.0"
+
 private val BOOLEAN_FLAGS = setOf(
     "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear"
 )
@@ -70,6 +72,8 @@ private fun runMain(args: Array<String>) {
         "setup" -> cmdSetup(args.drop(1))
         "doctor" -> cmdDoctor(args.drop(1))
         "-h", "--help", "help" -> usage()
+        "-v", "--version", "version" -> println("NOIR $VERSION")
+        "--about", "about" -> println(Guidance.about(VERSION))
         else -> {
             System.err.println("不认识的命令：$command")
             usage()
@@ -85,9 +89,12 @@ private fun usage() {
         runs on Windows 10/11, macOS and Debian/Ubuntu.
 
         第一次用？直接运行 `noir`（不带参数），会进入向导。
+        想先了解它是什么：noir --about
 
         usage:
           noir                                guided setup + scan (interactive)
+          noir --about                        what this is, what it writes, license
+          noir --version                      print the version
           noir doctor                         check adb / jadx / device
           noir setup                          download missing tools into ~/.noir/tools
           noir devices                        list connected devices

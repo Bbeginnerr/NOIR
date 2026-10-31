@@ -181,6 +181,8 @@ cli/build/install/noir/bin/noir.bat    # Windows
 ## 用法
 
 ```bash
+noir --about              # 它是什么、会写什么、许可
+noir --version
 noir devices
 noir scan                 # 全量扫描，输出 JSON / Markdown / 域名清单
 noir ui                   # 扫描并渲染仪表盘
