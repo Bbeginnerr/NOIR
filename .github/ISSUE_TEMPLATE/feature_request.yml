@@ -1,0 +1,44 @@
+name: Feature request
+description: A new rule, command, or output format.
+title: "[feat] "
+labels: [ "enhancement" ]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      placeholder: |
+        noir auto should also flag apps that declare an exported service
+        AND have an upload endpoint.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - scan / parsing
+        - classification / scoring
+        - dashboard / output
+        - remediation (`auto`, `block`)
+        - `deep` / jadx
+        - setup / doctor
+        - docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

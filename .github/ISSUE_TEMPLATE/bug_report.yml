@@ -1,0 +1,82 @@
+name: Bug report
+description: Something crashed, printed the wrong thing, or mis-detected an app.
+title: "[bug] "
+labels: [ "bug" ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please run `noir doctor` and paste the output —
+        without it most environment problems cannot be diagnosed.
+
+  - type: input
+    id: version
+    attributes:
+      label: NOIR version
+      description: Output of `noir --version`
+      placeholder: NOIR 0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows 10
+        - Windows 11
+        - Debian / Ubuntu
+        - other Linux
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device + Android version
+      placeholder: Xiaomi 17 Pro Max, Android 16 / HyperOS 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`noir doctor` output"
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: noir auto --apply
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: Include the full output, and re-run with `--verbose` if it was a crash.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, report.md snippets, related issues.
+    validations:
+      required: false

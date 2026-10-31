@@ -10,6 +10,9 @@
 # NOIR
 
 [![build](https://github.com/Verlintas/NOIR/actions/workflows/build.yml/badge.svg)](https://github.com/Verlintas/NOIR/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/Verlintas/NOIR)](https://github.com/Verlintas/NOIR/releases)
+[![license](https://img.shields.io/github/license/Verlintas/NOIR)](LICENSE)
+![platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-2ea44f)
 
 **把「这台手机到底能泄露什么」变成一份可复现的报告。**
 
@@ -127,6 +130,31 @@ scoop install adb jadx
 
 ---
 
+## 安装
+
+**方式一：下载发布包**
+
+到 [Releases](https://github.com/Verlintas/NOIR/releases) 下载对应平台的 zip：
+
+```
+noir-v0.1.0-macOS.zip
+noir-v0.1.0-Windows.zip
+noir-v0.1.0-Linux.zip
+SHA256SUMS.txt
+```
+
+解压后直接运行 `bin/noir`（Windows 是 `bin\noir.bat`）。需要 **JDK 17+**，其余依赖
+（`adb`、`jadx`）首次运行时会问你要不要自动下载。
+
+**方式二：从源码构建**
+
+```bash
+git clone https://github.com/Verlintas/NOIR
+cd NOIR
+./gradlew :cli:installDist
+./cli/build/install/noir/bin/noir --about
+```
+
 ## 构建
 
 ```bash
@@ -216,11 +244,37 @@ noir-out/
 └── rollback.txt     # 本次动作的回滚命令
 ```
 
+## 隐私
+
+- 工具本身**不联网**：没有遥测、没有版本检查、没有崩溃上报
+- 扫描结果只写在你指定的 `--out` 目录
+- 唯一的外部请求发生在 `noir setup`（下载 adb/jadx）和 `noir deep`（jadx 是本地进程）
+- 报告里可能包含你设备上的包名和端点，分享前自行检查
+
 ## 缓存
 
 扫描结果按 `包名 + APK 路径` 缓存在 `~/.noir/endpoints.tsv`。应用更新后路径变化会自动重新分析，重复扫描通常只需几秒。
 
 ---
+
+## 架构
+
+```
+adb ──▶ pm / dumpsys ──▶ Dumpsys parser ──┐
+                                          ├─▶ cache (pkg + apk path)
+adb ──▶ unzip/strings ──▶ endpoints ──────┘        │
+                                                   ▼
+                                          Classifier ─▶ score ─▶ Advisor
+                                                   │              │
+                                                   ▼              ▼
+                                              report.json    plan.txt
+                                              report.md      rollback.txt
+                                                   │
+                                                   ▼
+                                                 Tui / CLI
+```
+
+`deep` 走另一条支线：`adb pull` → `jadx` → 源码 grep。
 
 ## 设计取舍
 
@@ -228,6 +282,33 @@ noir-out/
 - **共享 UID 特殊处理**：Android 上 `android.uid.system` 下的应用（常见 50+ 个）权限记录在 `dumpsys package` 尾部的 `Shared users` 段。解析器会把这些权限合并回每个包，否则最该被看见的应用反而会消失。
 - **建议分级**：只有 appops 级别的动作标记为可自动执行；卸载必须显式开启。
 - **无遥测**：程序不包含任何上报逻辑。
+
+## 常见问题
+
+**需要 root 吗？**
+不需要。全部通过 `adb` 的 shell 权限完成；卸载只是 `--user 0` 级别，APK 仍在系统分区。
+
+**会改坏手机吗？**
+默认完全只读。`--apply` 只改 app-ops，每条都能用 `default` 还原，`rollback.txt` 会写出来。
+`noir block` 的卸载也会先打印 `pm install-existing` 的恢复命令。
+
+**为什么有些应用只给"人工复核"？**
+系统应用不能真正卸载（`--user 0` 卸载也会被 OTA 或恢复出厂装回来），所以只建议
+app-ops 或 DNS 层拦截。
+
+**DNS 拦截为什么只导出不执行？**
+跨平台改 DNS 很容易把设备网断掉（我们在开发中踩过），所以只产出 `domains.txt`，
+由你导入 Pi-hole / AdGuard / 路由器。
+
+**支持 iOS 吗？**
+不支持。`core` 是按 Kotlin Multiplatform 组织的，但审计逻辑依赖 Android 的
+`dumpsys` 和 APK 格式。
+
+## 参与
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 构建、测试、规则放在哪
+- [SECURITY.md](SECURITY.md) — 漏洞报告方式（请不要开公开 issue）
+- [Issues](https://github.com/Verlintas/NOIR/issues) — bug 请附上 `noir doctor` 输出
 
 ## 路线图
 
@@ -238,6 +319,12 @@ noir-out/
 - [ ] 设备端 DNS/VPN 拦截方案导出
 - [ ] 扫描结果签名与版本对比
 
+## 免责声明
+
+NOIR 只应用于**你自己的设备**，或你获得明确授权的设备。它给出的是静态证据
+（"这个应用具备这个能力，并且代码里有这个端点"），**不能证明**某次具体传输发生过。
+请结合网络层证据自行判断。
+
 ## 许可
 
-MIT
+MIT © 2026 Verlintas

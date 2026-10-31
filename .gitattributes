@@ -1,0 +1,13 @@
+# Everything is LF by default; Windows shims must stay CRLF.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.jar binary
+*.zip binary
+*.png binary
+*.jpg binary
+
+gradlew text eol=lf
+gradlew.bat text eol=crlf

@@ -27,7 +27,8 @@ import app.noir.core.platform.Setup
 import java.io.File
 import kotlin.system.exitProcess
 
-private const val VERSION = "0.1.0"
+private val VERSION: String =
+    Guidance::class.java.`package`?.implementationVersion ?: "0.1.0-dev"
 
 private val BOOLEAN_FLAGS = setOf(
     "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear"
