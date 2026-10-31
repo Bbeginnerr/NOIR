@@ -1,3 +1,8 @@
+/*
+ * NOIR — Android leak audit
+ * Copyright (c) 2026 Verlintas
+ * SPDX-License-Identifier: MIT
+ */
 package app.noir.core
 
 enum class ActionType(val label: String) {

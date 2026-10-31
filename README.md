@@ -9,7 +9,7 @@
 
 # NOIR
 
-[![build](https://github.com/USER/NOIR/actions/workflows/build.yml/badge.svg)](https://github.com/USER/NOIR/actions/workflows/build.yml)
+[![build](https://github.com/Verlintas/NOIR/actions/workflows/build.yml/badge.svg)](https://github.com/Verlintas/NOIR/actions/workflows/build.yml)
 
 **把「这台手机到底能泄露什么」变成一份可复现的报告。**
 

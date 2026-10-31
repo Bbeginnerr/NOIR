@@ -1,3 +1,8 @@
+/*
+ * NOIR — Android leak audit
+ * Copyright (c) 2026 Verlintas
+ * SPDX-License-Identifier: MIT
+ */
 package app.noir.core.adb
 
 import app.noir.core.Device

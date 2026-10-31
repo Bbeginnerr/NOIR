@@ -1,3 +1,8 @@
+/*
+ * NOIR — Android leak audit
+ * Copyright (c) 2026 Verlintas
+ * SPDX-License-Identifier: MIT
+ */
 package app.noir.cli
 
 import app.noir.core.Tui
@@ -47,7 +52,8 @@ object Guidance {
         field("not", "a root tool · not a malware scanner · not a firewall")
         field("writes", "nothing by default; --apply only sets reversible app-ops")
         field("license", "MIT")
-        field("repo", "github.com/USER/NOIR")
+        field("author", "Verlintas")
+        field("repo", "github.com/Verlintas/NOIR")
         field("runs on", "Windows 10/11 · macOS · Debian/Ubuntu")
 
         sb.append(row("")).append('\n')
