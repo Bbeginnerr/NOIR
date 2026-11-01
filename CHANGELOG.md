@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-11-01
+
+### Changed
+
+- build: Gradle wrapper 9.8.2, Kotlin 2.4.21 (both plugins pinned to the same version)
+- CI: `actions/checkout@v7`, `actions/setup-java@v6`, `actions/upload-artifact@v7`,
+  `actions/download-artifact@v8`, `softprops/action-gh-release@v3`
+
+No user-facing behaviour changed in this release; it exists to validate the
+upgraded release pipeline.
+
 ## [0.2.1] — 2026-11-01
 
 ### Fixed
