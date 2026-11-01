@@ -5,6 +5,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-01
+
+### Added
+
+- manifest-level audit via an in-house AXML parser (no external dependency):
+  exported components without a permission, `usesCleartextTraffic`, `allowBackup`,
+  `debuggable`, `targetSdk`, `networkSecurityConfig`
+- data-type correlation: each permission is mapped to the data it exposes
+  (location / contacts / SMS / calls / mic / camera / screen / apps / identity /
+  files / calendar / accounts) and joined with upload hosts — `leaks` in the report
+- shared-UID section: lists packages that share one Linux uid and therefore hold
+  the union of each other's permissions
+- SDK / tracker fingerprinting from domains and decompiled class paths
+  (Umeng, Firebase, AppsFlyer, Adjust, Meta, ByteDance, Tencent, Alibaba, Baidu,
+  Sogou, iFlytek, Sentry, Mixpanel, OneSignal, Bugly, Getui, JPush, MiPush …)
+- deeper code signals: `SystemProperties.set`, SMS APIs, device-id getters,
+  WebView bridges, accessibility / notification-listener / device-admin services
+- deepscan risk now includes manifest exposure (exported services/receivers/providers,
+  cleartext + upload endpoint, backup, debuggable)
+
 ## [0.1.2] — 2026-11-01
 
 ### Fixed

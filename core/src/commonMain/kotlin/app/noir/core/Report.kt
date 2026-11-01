@@ -23,6 +23,9 @@ object Report {
             sb.append("      \"installer\": ").append(a.installer?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
             sb.append("      \"category\": \"").append(esc(a.category.label)).append("\",\n")
             sb.append("      \"vendor\": ").append(a.vendor?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
+            sb.append("      \"sharedUid\": ").append(a.sharedUid?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
+            sb.append("      \"dataTypes\": ").append(array(a.dataTypes.map { it.label })).append(",\n")
+            sb.append("      \"leaks\": ").append(leaksJson(a)).append(",\n")
             sb.append("      \"score\": ").append(a.score).append(",\n")
             sb.append("      \"permissions\": ").append(array(a.permissions)).append(",\n")
             sb.append("      \"endpoints\": ").append(array(a.endpoints)).append("\n")
@@ -82,6 +85,19 @@ object Report {
             }
         }
 
+        val sharedGroups = apps.filter { it.sharedUid != null }
+            .groupBy { it.sharedUid!! }
+            .filterValues { it.size > 1 }
+        if (sharedGroups.isNotEmpty()) {
+            sb.append("\n## Shared UIDs\n\n")
+            sb.append("Packages below share one Linux uid, so they effectively hold the *union* of\n")
+            sb.append("their permissions. A privileged component can borrow another's grants.\n\n")
+            sharedGroups.toList().sortedByDescending { it.second.size }.forEach { (uid, group) ->
+                sb.append("- **").append(uid).append("** — ").append(group.size).append(" packages: ")
+                sb.append(group.joinToString(", ") { "`${it.pkg}`" }).append("\n")
+            }
+        }
+
         sb.append("\n## Details\n")
         apps.forEach { a ->
             sb.append("\n### ").append(a.pkg).append("  (").append(a.score).append(")\n\n")
@@ -90,7 +106,17 @@ object Report {
             sb.append(" · debuggable: ").append(a.debuggable)
             sb.append(" · installer: ").append(a.installer ?: "unknown")
             sb.append(" · category: ").append(a.category.label)
-            sb.append(" · vendor: ").append(a.vendor ?: "unknown").append("\n")
+            sb.append(" · vendor: ").append(a.vendor ?: "unknown")
+            sb.append(" · shared uid: ").append(a.sharedUid ?: "—").append("\n")
+            if (a.dataTypes.isNotEmpty()) {
+                sb.append("- data: ").append(a.dataTypes.joinToString(", ") { it.label }).append("\n")
+            }
+            if (a.leaks.isNotEmpty()) {
+                sb.append("- leak paths:\n")
+                a.leaks.forEach { (data, hosts) ->
+                    sb.append("  - ").append(data.label).append(" → ").append(hosts.joinToString(", ")).append("\n")
+                }
+            }
             if (a.permissions.isNotEmpty()) {
                 sb.append("- permissions: ").append(a.permissions.joinToString(", ")).append("\n")
             }
@@ -112,6 +138,13 @@ object Report {
             }
         }
         return hosts.joinToString("\n")
+    }
+
+    private fun leaksJson(app: AppEntry): String {
+        if (app.leaks.isEmpty()) return "{}"
+        return app.leaks.entries.joinToString(prefix = "{", postfix = "}") { (data, hosts) ->
+            "\"${esc(data.label)}\":" + array(hosts)
+        }
     }
 
     private fun array(items: List<String>): String =

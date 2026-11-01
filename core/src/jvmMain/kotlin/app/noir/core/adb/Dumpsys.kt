@@ -9,7 +9,8 @@ data class PkgMeta(
     val flags: String,
     val appId: String,
     val installer: String?,
-    val perms: Set<String>
+    val perms: Set<String>,
+    val sharedUser: String? = null
 ) {
     val isSystem: Boolean get() = flags.contains("SYSTEM")
     val debuggable: Boolean get() = flags.contains("DEBUGGABLE")
@@ -27,6 +28,7 @@ data class PkgMeta(
 object Dumpsys {
 
     private val PKG = Regex("^  Package \\[([^\\]]+)]")
+    private val SHARED_USER = Regex("^sharedUser=SharedUserSetting\\{[0-9a-f]+ ([^/]+)/")
     private val SHARED = Regex("^  SharedUser \\[([^\\]]+)]")
     private val PKG_SETTING = Regex("PackageSetting\\{[0-9a-f]+ ([^/]+)/")
     private val GRANTED = Regex("^android\\.permission\\.([A-Z0-9_]+): granted=true$")
@@ -64,6 +66,8 @@ object Dumpsys {
                         val v = s.removePrefix("installerPackageName=")
                         c.installer = if (v == "null") null else v
                     }
+                    s.startsWith("sharedUser=") && c.sharedUser == null ->
+                        c.sharedUser = SHARED_USER.find(s)?.groupValues?.get(1)
                     else -> GRANTED.find(s)?.let { c.perms.add(it.groupValues[1]) }
                 }
             } else {
@@ -98,13 +102,14 @@ object Dumpsys {
             }
         }
 
-        return acc.mapValues { PkgMeta(it.value.flags, it.value.appId, it.value.installer, it.value.perms) }
+        return acc.mapValues { PkgMeta(it.value.flags, it.value.appId, it.value.installer, it.value.perms, it.value.sharedUser) }
     }
 
     private class Mutable {
         var flags: String = ""
         var appId: String = ""
         var installer: String? = null
+        var sharedUser: String? = null
         val perms: MutableSet<String> = HashSet()
     }
 }

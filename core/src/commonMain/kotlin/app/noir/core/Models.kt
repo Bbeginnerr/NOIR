@@ -1,8 +1,3 @@
-/*
- * NOIR — Android leak audit
- * Copyright (c) 2026 Verlintas
- * SPDX-License-Identifier: MIT
- */
 package app.noir.core
 
 /** A connected Android device as reported by `adb devices -l`. */
@@ -24,8 +19,15 @@ data class AppEntry(
     val endpoints: List<String>,
     val score: Int,
     val category: Category = Category.OTHER,
-    val vendor: String? = null
+    val vendor: String? = null,
+    val sharedUid: String? = null
 ) {
     val uploadEndpoints: List<String> get() = endpoints.filter { Rules.isUpload(it) }
     val commandEndpoints: List<String> get() = endpoints.filter { Rules.isCommand(it) }
+
+    /** Data categories this app can read. */
+    val dataTypes: Set<DataType> get() = Exposure.dataTypes(permissions)
+
+    /** Data categories + the hosts they could reach. Empty when nothing uploads. */
+    val leaks: Map<DataType, List<String>> get() = Exposure.leaks(this)
 }

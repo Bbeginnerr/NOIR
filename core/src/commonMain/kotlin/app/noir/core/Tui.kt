@@ -93,12 +93,12 @@ object Tui {
         // ── brand block ────────────────────────────────────────────────────
         if (ascii || W < 72) {
             line("  ${s.bold("NOIR")}  ${s.dim("android leak audit")}")
-            line("  ${s.dim("v0.1 · monospace edition")}")
+            line("  ${s.dim("monospace edition")}")
             line()
         } else {
             val tagline = listOf(
                 s.bold("android leak audit"),
-                s.dim("v0.1 · monospace edition"),
+                s.dim("monospace edition"),
                 "",
                 s.dim(host.take(W - 38))
             )

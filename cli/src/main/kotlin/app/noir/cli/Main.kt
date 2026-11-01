@@ -21,6 +21,9 @@ import app.noir.core.adb.DeviceScan
 import app.noir.core.adb.Dumpsys
 import app.noir.core.adb.PackagePath
 import app.noir.core.apk.ApkScan
+import app.noir.core.apk.ManifestAnalyzer
+import app.noir.core.apk.ManifestFacts
+import app.noir.core.apk.Trackers
 import app.noir.core.jadx.Jadx
 import app.noir.core.platform.Platform
 import app.noir.core.platform.Setup
@@ -569,7 +572,8 @@ private fun performScan(args: Args): ScanResult {
             endpoints = urls,
             score = Rules.score(perms, urls, m.isSystem, m.debuggable),
             category = Classifier.category(pkg, urls, perms, m.isSystem),
-            vendor = Classifier.vendor(pkg, urls)
+            vendor = Classifier.vendor(pkg, urls),
+            sharedUid = m.sharedUser
         )
     }
         .filter { it.score >= minScore }
@@ -656,6 +660,8 @@ private data class DeepFinding(
     val score: Int,
     val codeRisk: Int,
     val signals: Map<String, Int>,
+    val trackers: Set<String>,
+    val manifest: ManifestFacts?,
     val src: File?,
     val error: String?
 )
@@ -668,7 +674,14 @@ private val DEEP_SIGNALS: Map<String, Pair<Regex, Int>> = linkedMapOf(
     "screen-capture" to (Regex("MediaProjection|createScreenCaptureIntent") to 4),
     "reflection" to (Regex("Class\\.forName|getDeclaredMethod") to 1),
     "crypto" to (Regex("Cipher\\.getInstance|MessageDigest") to 1),
-    "network" to (Regex("HttpURLConnection|OkHttpClient|openConnection") to 1)
+    "network" to (Regex("HttpURLConnection|OkHttpClient|openConnection") to 1),
+    "set-prop" to (Regex("SystemProperties\\.set|Settings\\.(Global|Secure)\\.put") to 5),
+    "sms" to (Regex("SmsManager|sendTextMessage|content://sms") to 4),
+    "device-id" to (Regex("getDeviceId|getImei|getSubscriberId|getAndroidId|getSerial") to 3),
+    "webview-bridge" to (Regex("addJavascriptInterface") to 3),
+    "accessibility" to (Regex("AccessibilityService") to 4),
+    "notification-listener" to (Regex("NotificationListenerService") to 3),
+    "device-admin" to (Regex("DeviceAdminReceiver") to 4)
 )
 
 private val DEEP_SKIP = listOf(
@@ -712,7 +725,7 @@ private fun cmdDeepScan(raw: List<String>) {
             val result = try {
                 analyzeOne(adb, scan, outDir, jadxBin, app)
             } catch (e: Exception) {
-                DeepFinding(app.pkg, app.score, 0, emptyMap(), null, e.message ?: e::class.simpleName)
+                DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, e.message ?: e::class.simpleName)
             }
             val n = done.incrementAndGet()
             val elapsed = (System.currentTimeMillis() - started) / 1000
@@ -723,7 +736,7 @@ private fun cmdDeepScan(raw: List<String>) {
         try {
             future.get()
         } catch (e: Exception) {
-            DeepFinding("unknown", 0, 0, emptyMap(), null, e.message)
+            DeepFinding("unknown", 0, 0, emptyMap(), emptySet(), null, null, e.message)
         }
     }
     pool.shutdown()
@@ -748,7 +761,7 @@ private fun cmdDeepScan(raw: List<String>) {
 
 private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String, app: AppEntry): DeepFinding {
     val remote = scan.paths[app.pkg]
-        ?: return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "no apk path")
+        ?: return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "no apk path")
 
     val apk = File(outDir, "apks/${app.pkg}.apk")
     if (!apk.exists()) {
@@ -756,35 +769,41 @@ private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String
         adb.pull(scan.device.serial, remote, apk)
     }
     if (!apk.exists()) {
-        return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "pull failed")
+        return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "pull failed")
     }
 
     val src = File(outDir, "src/${app.pkg}")
     val marker = File(src, ".noir-ok")
-    if (!(marker.exists() && marker.readText().trim() == remote)) {
+    val cached = marker.exists() && marker.readText().trim() == remote
+    if (!cached) {
         src.deleteRecursively()
         src.mkdirs()
-    } else {
-        val signals = countSignals(src)
-        val risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
-            (signals[key] ?: 0).coerceAtMost(3) * def.second
-        }.coerceAtMost(30)
-        return DeepFinding(app.pkg, app.score, risk, signals, src, null)
     }
 
-    val exit = Jadx(jadxBin).decompile(apk, src)
+    val exit = if (cached) 0 else Jadx(jadxBin).decompile(apk, src)
     val sources = File(src, "sources")
     if (exit != 0 && !sources.isDirectory) {
-        return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "jadx exit $exit")
+        return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), ManifestAnalyzer.analyze(apk), null, "jadx exit $exit")
     }
     runCatching { marker.writeText(remote) }
 
     val signals = countSignals(src)
-    val risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
+    var risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
         (signals[key] ?: 0).coerceAtMost(3) * def.second
-    }.coerceAtMost(30)
+    }
+    val manifest = ManifestAnalyzer.analyze(apk)
+    manifest?.let { facts ->
+        risk += facts.riskyCount.coerceAtMost(4)
+        if (facts.cleartext == true && app.uploadEndpoints.isNotEmpty()) risk += 2
+        if (facts.allowBackup == true) risk += 1
+        if (facts.debuggable == true) risk += 3
+    }
 
-    return DeepFinding(app.pkg, app.score, risk, signals, src, null)
+    return DeepFinding(
+        app.pkg, app.score, risk.coerceAtMost(40), signals,
+        Trackers.fromEndpoints(app.endpoints) + Trackers.fromSources(src),
+        manifest, src, null
+    )
 }
 
 private fun countSignals(dir: File): Map<String, Int> {
@@ -820,21 +839,23 @@ private fun countSignals(dir: File): Map<String, Int> {
 }
 
 private fun writeDeepReports(outDir: File, findings: List<DeepFinding>) {
-    val tsv = StringBuilder("code_risk\tscan_score\tpackage\tsignals\terror\n")
+    val tsv = StringBuilder("code_risk\tscan_score\tpackage\tsignals\ttrackers\texported_no_perm\terror\n")
     findings.forEach { f ->
         val signals = f.signals.entries.joinToString(";") { "${it.key}=${it.value}" }
         tsv.append(f.codeRisk).append('\t')
             .append(f.score).append('\t')
             .append(f.pkg).append('\t')
             .append(signals).append('\t')
+            .append(f.trackers.joinToString(",")).append('\t')
+            .append(f.manifest?.exportedWithoutPermission?.size ?: 0).append('\t')
             .append(f.error ?: "").append('\n')
     }
     File(outDir, "deepscan.tsv").writeText(tsv.toString())
 
     val md = StringBuilder()
     md.append("# DeepScan\n\n")
-    md.append("| code risk | scan score | package | signals | error |\n")
-    md.append("|---:|---:|---|---|---|\n")
+    md.append("| code risk | scan score | package | signals | trackers | error |\n")
+    md.append("|---:|---:|---|---|---|---|\n")
     findings.forEach { f ->
         val signals = f.signals.entries.sortedByDescending { it.value }
             .joinToString(", ") { "${it.key} ×${it.value}" }
@@ -842,6 +863,7 @@ private fun writeDeepReports(outDir: File, findings: List<DeepFinding>) {
             .append(" | ").append(f.score)
             .append(" | `").append(f.pkg).append("`")
             .append(" | ").append(signals.ifBlank { "—" })
+            .append(" | ").append(f.trackers.joinToString(", ").ifBlank { "—" })
             .append(" | ").append(f.error ?: "")
             .append(" |\n")
     }
@@ -852,6 +874,24 @@ private fun writeDeepReports(outDir: File, findings: List<DeepFinding>) {
         md.append("- scan score: ").append(f.score).append("\n")
         if (f.signals.isNotEmpty()) {
             md.append("- signals: ").append(f.signals.entries.joinToString(", ") { "${it.key}=${it.value}" }).append("\n")
+        }
+        if (f.trackers.isNotEmpty()) {
+            md.append("- trackers: ").append(f.trackers.joinToString(", ")).append("\n")
+        }
+        f.manifest?.let { m ->
+            md.append("- targetSdk: ").append(m.targetSdk ?: "?").append("\n")
+            md.append("- cleartext: ").append(m.cleartext ?: "unset")
+                .append(" · allowBackup: ").append(m.allowBackup ?: "unset")
+                .append(" · debuggable: ").append(m.debuggable ?: "false")
+                .append(" · networkSecurityConfig: ").append(m.networkSecurityConfig).append("\n")
+            if (m.exportedWithoutPermission.isNotEmpty()) {
+                md.append("- exported without permission (").append(m.exportedWithoutPermission.size).append("):\n")
+                m.exportedWithoutPermission.take(10).forEach { c ->
+                    md.append("  - ").append(c.kind).append(" `").append(c.name).append("`")
+                    c.authorities?.let { md.append(" (").append(it).append(")") }
+                    md.append("\n")
+                }
+            }
         }
         f.src?.let { md.append("- sources: `").append(it.absolutePath).append("`\n") }
         if (f.error != null) md.append("- error: ").append(f.error).append("\n")

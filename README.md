@@ -27,6 +27,9 @@ NOIR 是一个跑在电脑上的审计工具，通过 `adb` 读取已连接 Andr
 1. **盘点**：列出所有「有网络权限 + 敏感权限」的应用，以及它们各自拿到了什么。
 2. **抽取端点**：在设备端用 `unzip + strings` 从每个 APK 的 dex 里提取 URL，只回传几 KB，不把整包拉回电脑。
 3. **分类与打分**：按包名和域名识别厂商（Xiaomi / Google / 腾讯 / 高德 …）与类别（遥测、广告、定位、输入法 …），结合权限和上报端点计算风险分。
+4. **数据关联**：把权限翻译成"能拿到什么数据"（位置/通讯录/短信/通话/麦克风/相机/屏幕/应用列表/设备标识/文件/日历/账号），再和上报域名配对，得出"哪类数据可能流向哪里"。
+5. **共享 UID**：识别 `android.uid.system` 这类共享用户，列出哪些包实际上共享同一套权限并集。
+6. **清单层**：解析 `AndroidManifest.xml` 二进制 AXML，找出没有权限保护的导出组件、明文流量、备份、debuggable、targetSdk。
 4. **给建议**：区分「可安全自动执行」「需人工确认」「不建议动」，并为每条动作生成回滚命令。
 5. **必要时深挖**：`deep` 会把单个 APK 拉到本地，用 `jadx` 反编译后检索 `Runtime.exec`、`setApplicationEnabledSetting`、`DexClassLoader`、`MediaProjection` 等高风险调用。
 
@@ -254,8 +257,10 @@ noir deepscan --jobs 4         # 并行 jadx 数量
 
 流程是：扫描 → 按风险排序 → 逐个 `adb pull` + `jadx` → 统计代码级信号
 （`Runtime.exec`、`DexClassLoader`、`setApplicationEnabledSetting`、
-`enabled_accessibility_services`、`MediaProjection` …）→ 输出
-`deepscan.md` / `deepscan.tsv` → 询问是否清理。
+`enabled_accessibility_services`、`MediaProjection`、`SystemProperties.set`、
+短信/设备标识、WebView 桥、无障碍/通知监听/设备管理员 …）→ 解析清单
+（导出组件、明文流量、备份、debuggable）→ 识别 SDK（Umeng/Firebase/AppsFlyer…）
+→ 输出 `deepscan.md` / `deepscan.tsv` → 询问是否清理。
 
 ```bash
 noir deepscan --apply          # 分析后执行安全 appops
