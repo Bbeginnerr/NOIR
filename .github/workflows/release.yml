@@ -59,6 +59,7 @@ jobs:
           read -n 1 -s -r -p "press any key to close"
           SH
             chmod +x "stage/Start NOIR.command"
+            "stage/NOIR.app/Contents/MacOS/NOIR" --version
             (cd stage && zip -qry "../release/noir-${GITHUB_REF_NAME}-macOS-portable.zip" .)
           else
             cat > "stage/Start-NOIR.sh" <<'SH'
@@ -69,6 +70,7 @@ jobs:
           printf "press Enter to close"; read _
           SH
             chmod +x "stage/Start-NOIR.sh"
+            "stage/NOIR/bin/NOIR" --version
             (cd stage && zip -qry "../release/noir-${GITHUB_REF_NAME}-Linux-portable.zip" .)
           fi
 
@@ -89,15 +91,19 @@ jobs:
             --app-version 1.0.0 `
             --vendor Verlintas `
             --description "Android leak audit" `
+            --win-console `
             --java-options "-Dfile.encoding=UTF-8" `
             --jlink-options "--strip-debug --no-man-pages --no-header-files --compress=2"
           @"
           @echo off
+          chcp 65001 >nul
           cd /d "%~dp0"
-          "NOIR\NOIR.exe" %*
+          "NOIR\runtime\bin\java.exe" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -cp "NOIR\app\*" app.noir.cli.MainKt %*
           echo.
           pause
           "@ | Set-Content -Encoding ASCII "stage\Start NOIR.bat"
+          $v = & "stage\NOIR\NOIR.exe" --version
+          if ($v -notmatch "NOIR") { throw "NOIR.exe did not run: [$v]" }
           Compress-Archive -Path stage\* -DestinationPath "release/noir-$env:GITHUB_REF_NAME-Windows-portable.zip"
 
       - uses: actions/upload-artifact@v4

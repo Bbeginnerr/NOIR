@@ -19,6 +19,8 @@ data class PackagePath(val pkg: String, val path: String)
  */
 object DeviceScan {
 
+    private const val FALLBACK_SUFFIX = "!FALLBACK"
+
     fun packagePaths(adb: Adb, serial: String): Map<String, String> {
         val out = adb.shell(serial, "pm list packages -f").output
         val map = HashMap<String, String>()
@@ -54,6 +56,7 @@ object DeviceScan {
         }
 
         val result = HashMap<String, List<String>>()
+        val pendingFallback = ArrayList<String>()
         val chunks = targets.chunked(8)
 
         val script = File(workDir, "scan.sh")
@@ -62,11 +65,24 @@ object DeviceScan {
             #!/system/bin/sh
             OUT=/data/local/tmp/noir_urls.txt
             : > ${'$'}OUT
+            TMP=/data/local/tmp/noir_dex.bin
             while read p f; do
-              u=${'$'}(unzip -p "${'$'}f" 'classes*.dex' 2>/dev/null | strings \
-                  | grep -oE 'https?://[A-Za-z0-9._~:/?#@!&()*+,;=%-]+' \
-                  | sort -u | head -400 | tr '\n' ' ')
-              [ -n "${'$'}u" ] && echo "${'$'}p|${'$'}u" >> ${'$'}OUT
+              # Explicit entry names: some vendor `unzip` builds do not expand 'classes*.dex'.
+              : > ${'$'}TMP
+              for d in classes.dex classes2.dex classes3.dex classes4.dex classes5.dex \
+                       classes6.dex classes7.dex classes8.dex classes9.dex classes10.dex \
+                       classes11.dex classes12.dex classes13.dex classes14.dex classes15.dex; do
+                unzip -p "${'$'}f" "${'$'}d" 2>/dev/null >> ${'$'}TMP
+              done
+              if [ ! -s ${'$'}TMP ]; then
+                # Nothing extractable: ask the host to pull and parse this APK.
+                echo "${'$'}p!FALLBACK" >> ${'$'}OUT
+              else
+                u=${'$'}(strings < ${'$'}TMP | grep -oE 'https?://[A-Za-z0-9._~:/?#@!&()*+,;=%-]+' \
+                    | sort -u | head -400 | tr '\n' ' ')
+                [ -n "${'$'}u" ] && echo "${'$'}p|${'$'}u" >> ${'$'}OUT
+              fi
+              rm -f ${'$'}TMP
             done < /data/local/tmp/noir_targets.txt
             echo "#DONE" >> ${'$'}OUT
             """.trimIndent()
@@ -84,6 +100,10 @@ object DeviceScan {
 
             if (local.exists()) {
                 local.readLines().forEach { line ->
+                    if (line.endsWith(FALLBACK_SUFFIX)) {
+                        pendingFallback.add(line.removeSuffix(FALLBACK_SUFFIX))
+                        return@forEach
+                    }
                     if (!line.contains('|')) return@forEach
                     val pkg = line.substringBefore('|')
                     val found = line.substringAfter('|').split(' ').filter { it.isNotBlank() }
@@ -92,6 +112,12 @@ object DeviceScan {
             }
 
             onProgress(minOf((chunkIndex + 1) * 8, targets.size), targets.size)
+        }
+
+        if (pendingFallback.isNotEmpty()) {
+            println("  ! ${'$'}{pendingFallback.size} APK(s) could not be read by the device's unzip; pulling instead")
+            val fallbackTargets = targets.filter { it.pkg in pendingFallback }
+            result.putAll(urlsByPulling(adb, serial, fallbackTargets, workDir, onProgress))
         }
 
         return result

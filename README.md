@@ -151,7 +151,7 @@ SHA256SUMS.txt
 | 系统 | 双击这个 | 如果被拦 |
 |---|---|---|
 | macOS | `Start NOIR.command` | 右键 → 打开；或 `xattr -dr com.apple.quarantine "Start NOIR.command" NOIR.app` |
-| Windows | `Start NOIR.bat` | SmartScreen → 更多信息 → 仍要运行 |
+| Windows | `Start NOIR.bat` | SmartScreen → 更多信息 → 仍要运行（批处理会切到 UTF-8 并调用包内 JRE） |
 | Linux | `Start-NOIR.sh` | 先 `chmod +x Start-NOIR.sh`，或在终端执行 |
 
 启动器会打开一个终端窗口跑完向导，并在结束时停住（不会一闪而过）。

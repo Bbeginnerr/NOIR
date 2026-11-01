@@ -84,6 +84,24 @@ class DumpsysTest {
     }
 
     @Test
+    fun `parses runtime permissions that carry a flags suffix`() {
+        val text = dump(
+            "  Package [com.example] (a):",
+            "    appId=1001",
+            "    android.permission.INTERNET: granted=true",
+            "    android.permission.ACCESS_FINE_LOCATION: granted=true, flags=[ USER_SENSITIVE_WHEN_GRANTED]",
+            "    android.permission.CAMERA: granted=true; flags=[ USER_SET]",
+            "    android.permission.RECORD_AUDIO: granted=false, flags=[ USER_SET]"
+        )
+
+        val meta = Dumpsys.parse(text).getValue("com.example")
+        assertTrue(meta.perms.contains("INTERNET"))
+        assertTrue(meta.perms.contains("ACCESS_FINE_LOCATION"), "runtime permission with ', flags' must be kept")
+        assertTrue(meta.perms.contains("CAMERA"), "runtime permission with '; flags' must be kept")
+        assertFalse(meta.perms.contains("RECORD_AUDIO"), "granted=false must be ignored")
+    }
+
+    @Test
     fun `ignores ungranted permissions`() {
         val text = dump(
             "  Package [com.example.app] (aaa):",

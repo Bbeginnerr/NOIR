@@ -14,7 +14,9 @@ import java.io.File
 object Cache {
 
     private val dir = File(System.getProperty("user.home"), ".noir").apply { mkdirs() }
-    private val file = File(dir, "endpoints.tsv")
+    // Bump when extraction logic changes: old entries may encode failed scans.
+    private const val CACHE_VERSION = "v2"
+    private val file = File(dir, "endpoints-$CACHE_VERSION.tsv")
     private val map = HashMap<String, String>()
 
     init {

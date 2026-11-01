@@ -5,6 +5,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-01
+
+### Fixed
+
+- **dumpsys runtime permissions** — lines ending in `, flags=[…]` or `; flags=[…]`
+  were dropped, so apps holding granted location / camera / microphone never
+  entered the candidate list. Reported in [#9].
+- **device-side extraction** — `unzip -p apk 'classes*.dex'` is not portable; some
+  vendor builds (Huawei/HarmonyOS) do not expand entry wildcards and return
+  nothing with exit code 0. The scanner now names `classes.dex … classes15.dex`
+  explicitly, and pulls the APK for host-side parsing when nothing is extractable.
+  Reported in [#10].
+- **cache invalidation** — endpoint cache is versioned (`endpoints-v2.tsv`) so
+  results produced by the broken extraction are not reused.
+- **Windows portable** — `Start NOIR.bat` now runs the bundled
+  `runtime\bin\java.exe` directly with UTF-8 console settings, and jpackage is
+  built with `--win-console`; the release workflow smoke-tests `NOIR.exe --version`
+  on Windows, `NOIR` on Linux and the `.app` binary on macOS.
+
+[#9]: https://github.com/Verlintas/NOIR/issues/9
+[#10]: https://github.com/Verlintas/NOIR/issues/10
+
 ## [0.2.0] — 2026-11-01
 
 ### Added

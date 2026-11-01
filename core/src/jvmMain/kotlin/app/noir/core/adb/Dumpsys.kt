@@ -31,7 +31,7 @@ object Dumpsys {
     private val SHARED_USER = Regex("^sharedUser=SharedUserSetting\\{[0-9a-f]+ ([^/]+)/")
     private val SHARED = Regex("^  SharedUser \\[([^\\]]+)]")
     private val PKG_SETTING = Regex("PackageSetting\\{[0-9a-f]+ ([^/]+)/")
-    private val GRANTED = Regex("^android\\.permission\\.([A-Z0-9_]+): granted=true$")
+    private val GRANTED = Regex("^android\\.permission\\.([A-Z0-9_]+): granted=true(?:[,;].*)?$")
 
     fun parse(text: String): Map<String, PkgMeta> {
         val acc = LinkedHashMap<String, Mutable>()
