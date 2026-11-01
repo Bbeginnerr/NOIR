@@ -35,6 +35,39 @@ class Adb(private val bin: String = System.getenv("ADB") ?: "adb") {
         return ExecResult(process.exitValue(), output)
     }
 
+    /**
+     * Runs a command and delivers stdout line by line. Used by the device-side
+     * scan so the progress bar can advance once per APK.
+     */
+    fun execStreaming(
+        args: List<String>,
+        timeoutSec: Long = 0,
+        onLine: (String) -> Unit
+    ): ExecResult {
+        val process = ProcessBuilder(Exec.argv(bin, args))
+            .redirectErrorStream(true)
+            .start()
+        val output = StringBuilder()
+        process.inputStream.bufferedReader().use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                output.append(line).append('\n')
+                onLine(line)
+            }
+        }
+        val finished = if (timeoutSec <= 0) {
+            process.waitFor()
+            true
+        } else {
+            process.waitFor(timeoutSec, TimeUnit.SECONDS)
+        }
+        if (!finished) {
+            process.destroyForcibly()
+            return ExecResult(-1, output.toString(), timedOut = true)
+        }
+        return ExecResult(process.exitValue(), output.toString())
+    }
+
     fun shell(serial: String?, command: String, timeoutSec: Long = 180): ExecResult {
         val args = mutableListOf<String>()
         if (serial != null) {

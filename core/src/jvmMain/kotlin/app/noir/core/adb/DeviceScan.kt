@@ -14,12 +14,18 @@ data class PackagePath(val pkg: String, val path: String)
  * Collects URL strings from every installed APK.
  *
  * The fast path runs entirely on the device (unzip + strings), so only a few KB
- * cross the USB link. If the device lacks those toybox tools, it falls back to
- * pulling each APK and scanning it locally.
+ * cross the USB link. Progress is streamed per package: the shell script prints
+ * one marker after each APK, which lets the CLI redraw its bar for every app
+ * instead of every batch.
+ *
+ * If the device's `unzip` cannot read an APK at all, the script reports it and
+ * the host pulls that file and parses it locally.
  */
 object DeviceScan {
 
-    private const val FALLBACK_SUFFIX = "!FALLBACK"
+    private const val FALLBACK = "F "
+    private const val RESULT = "R "
+    private const val PROGRESS = "P "
 
     fun packagePaths(adb: Adb, serial: String): Map<String, String> {
         val out = adb.shell(serial, "pm list packages -f").output
@@ -57,14 +63,14 @@ object DeviceScan {
 
         val result = HashMap<String, List<String>>()
         val pendingFallback = ArrayList<String>()
-        val chunks = targets.chunked(8)
+
+        val list = File(workDir, "targets.txt")
+        list.writeText(targets.joinToString("\n", postfix = "\n") { "${it.pkg} ${it.path}" })
 
         val script = File(workDir, "scan.sh")
         script.writeText(
             """
             #!/system/bin/sh
-            OUT=/data/local/tmp/noir_urls.txt
-            : > ${'$'}OUT
             TMP=/data/local/tmp/noir_dex.bin
             while read p f; do
               # Explicit entry names: some vendor `unzip` builds do not expand 'classes*.dex'.
@@ -75,49 +81,65 @@ object DeviceScan {
                 unzip -p "${'$'}f" "${'$'}d" 2>/dev/null >> ${'$'}TMP
               done
               if [ ! -s ${'$'}TMP ]; then
-                # Nothing extractable: ask the host to pull and parse this APK.
-                echo "${'$'}p!FALLBACK" >> ${'$'}OUT
+                echo "F ${'$'}p"
               else
                 u=${'$'}(strings < ${'$'}TMP | grep -oE 'https?://[A-Za-z0-9._~:/?#@!&()*+,;=%-]+' \
                     | sort -u | head -400 | tr '\n' ' ')
-                [ -n "${'$'}u" ] && echo "${'$'}p|${'$'}u" >> ${'$'}OUT
+                [ -n "${'$'}u" ] && echo "R ${'$'}p|${'$'}u"
               fi
               rm -f ${'$'}TMP
+              echo "P ${'$'}p"
             done < /data/local/tmp/noir_targets.txt
-            echo "#DONE" >> ${'$'}OUT
+            echo "#DONE"
             """.trimIndent()
         )
+
         adb.push(serial, script, "/data/local/tmp/noir_scan.sh")
+        adb.push(serial, list, "/data/local/tmp/noir_targets.txt")
 
-        chunks.forEachIndexed { chunkIndex, chunk ->
-            val list = File(workDir, "targets.txt")
-            list.writeText(chunk.joinToString("\n", postfix = "\n") { "${it.pkg} ${it.path}" })
-            adb.push(serial, list, "/data/local/tmp/noir_targets.txt")
-            adb.shell(serial, "sh /data/local/tmp/noir_scan.sh", timeoutSec = 0)
+        var done = 0
+        val total = targets.size
 
-            val local = File(workDir, "urls.txt")
-            adb.pull(serial, "/data/local/tmp/noir_urls.txt", local)
-
-            if (local.exists()) {
-                local.readLines().forEach { line ->
-                    if (line.endsWith(FALLBACK_SUFFIX)) {
-                        pendingFallback.add(line.removeSuffix(FALLBACK_SUFFIX))
-                        return@forEach
-                    }
-                    if (!line.contains('|')) return@forEach
-                    val pkg = line.substringBefore('|')
-                    val found = line.substringAfter('|').split(' ').filter { it.isNotBlank() }
-                    if (found.isNotEmpty()) result[pkg] = found
+        val execution = adb.execStreaming(
+            listOf("-s", serial, "shell", "sh /data/local/tmp/noir_scan.sh"),
+            timeoutSec = 0
+        ) { line ->
+            when {
+                line.startsWith(RESULT) -> {
+                    val body = line.removePrefix(RESULT)
+                    val pkg = body.substringBefore('|')
+                    val found = body.substringAfter('|', "").split(' ').filter { it.isNotBlank() }
+                    if (pkg.isNotEmpty() && found.isNotEmpty()) result[pkg] = found
+                }
+                line.startsWith(FALLBACK) -> pendingFallback.add(line.removePrefix(FALLBACK).trim())
+                line.startsWith(PROGRESS) -> {
+                    done++
+                    onProgress(done, total)
                 }
             }
+        }
 
-            onProgress(minOf((chunkIndex + 1) * 8, targets.size), targets.size)
+        if (done == 0 && targets.isNotEmpty()) {
+            // The script never ran. Fall back to pulling everything rather than
+            // returning a plausible-looking empty report.
+            println("  ! device-side scan produced no progress; pulling ${targets.size} APKs instead")
+            return urlsByPulling(adb, serial, targets, workDir, onProgress)
+        }
+
+        if (execution.code != 0) {
+            println("  ! device-side scan exited with ${execution.code}; results may be partial")
         }
 
         if (pendingFallback.isNotEmpty()) {
-            println("  ! ${'$'}{pendingFallback.size} APK(s) could not be read by the device's unzip; pulling instead")
+            println("  ! ${pendingFallback.size} APK(s) could not be read by the device's unzip; pulling instead")
             val fallbackTargets = targets.filter { it.pkg in pendingFallback }
-            result.putAll(urlsByPulling(adb, serial, fallbackTargets, workDir, onProgress))
+            result.putAll(
+                urlsByPulling(adb, serial, fallbackTargets, workDir) { index, count ->
+                    print("\r  pulling $index/$count")
+                    System.out.flush()
+                }
+            )
+            println()
         }
 
         return result
@@ -128,7 +150,7 @@ object DeviceScan {
         serial: String,
         targets: List<PackagePath>,
         workDir: File,
-        onProgress: (Int, Int) -> Unit
+        onProgress: (Int, Int) -> Unit = { _, _ -> }
     ): Map<String, List<String>> {
         val result = HashMap<String, List<String>>()
         val apkDir = File(workDir, "apks").apply { mkdirs() }

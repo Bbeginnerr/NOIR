@@ -651,7 +651,7 @@ private fun progressLine(startedMs: Long, done: Int, total: Int): String {
     val pct = done * 100 / total
     val filled = (done.toLong() * width / total).toInt().coerceIn(0, width)
     val bar = "█".repeat(filled) + "░".repeat(width - filled)
-    val spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[(done / 8) % 10]
+    val spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[done % 10]
     return "\r  " + bar + " " + pct + "%  " + done + "/" + total +
         "  ·  ETA " + (eta / 60) + ":" + (eta % 60).toString().padStart(2, '0') + "  " + spin
 }

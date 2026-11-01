@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-11-01
+
+### Changed
+
+- scan progress is now streamed from the device and redrawn **once per APK**
+  (spinner + ETA), instead of once per batch of eight
+
+### Docs
+
+- dashboard screenshot (`docs/screenshot.png`) in the README
+
 ## [0.2.3] — 2026-11-01
 
 ### Fixed
