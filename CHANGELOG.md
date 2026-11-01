@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-11-01
+
+### Fixed
+
+- deepscan: skip decompiled library code (androidx / kotlin / okhttp / gson …) when
+  counting signals — the filter used paths relative to the output root instead of
+  `sources/`, so `Class.forName` in androidX was inflating `reflection`
+- deepscan: surface a `jadx exit != 0` as an error instead of silently scoring an
+  empty output directory
+
 ## [0.1.1] — 2026-11-01
 
 ### Added

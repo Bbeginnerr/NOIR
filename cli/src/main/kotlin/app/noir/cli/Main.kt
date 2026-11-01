@@ -764,9 +764,20 @@ private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String
     if (!(marker.exists() && marker.readText().trim() == remote)) {
         src.deleteRecursively()
         src.mkdirs()
-        Jadx(jadxBin).decompile(apk, src)
-        runCatching { marker.writeText(remote) }
+    } else {
+        val signals = countSignals(src)
+        val risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
+            (signals[key] ?: 0).coerceAtMost(3) * def.second
+        }.coerceAtMost(30)
+        return DeepFinding(app.pkg, app.score, risk, signals, src, null)
     }
+
+    val exit = Jadx(jadxBin).decompile(apk, src)
+    val sources = File(src, "sources")
+    if (exit != 0 && !sources.isDirectory) {
+        return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "jadx exit $exit")
+    }
+    runCatching { marker.writeText(remote) }
 
     val signals = countSignals(src)
     val risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
@@ -780,11 +791,14 @@ private fun countSignals(dir: File): Map<String, Int> {
     val counts = HashMap<String, Int>()
     if (!dir.exists()) return counts
 
+    // jadx writes decompiled classes under <out>/sources; skip bundled libraries by
+    // their path relative to that root, not the output root.
+    val root = File(dir, "sources").takeIf { it.isDirectory } ?: dir
     var budget = 40L * 1024 * 1024
-    val files = dir.walkTopDown()
+    val files = root.walkTopDown()
         .filter { it.isFile && (it.extension == "java" || it.extension == "kt") }
         .filter { file ->
-            val path = file.relativeTo(dir).path
+            val path = file.relativeTo(root).path
             DEEP_SKIP.none { path.startsWith(it) }
         }
         .take(8000)
