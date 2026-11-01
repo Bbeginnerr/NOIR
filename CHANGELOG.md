@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-11-01
+
+### Added
+
+- `noir deepscan` — pull + decompile the riskiest apps in parallel and score
+  code-level signals (`exec`, dynamic loading, app disabling, accessibility
+  rewriting, screen capture, reflection, crypto, networking)
+- `--apply` / `--purge` cleanup flow after DeepScan, with per-app confirmation
+- decompilation cache keyed by package + APK path
+- portable, double-clickable builds with a bundled runtime (jpackage):
+  `Start NOIR.command` / `Start NOIR.bat` / `Start-NOIR.sh`
+
+### Changed
+
+- multiple connected devices: a physical device is preferred over an emulator;
+  interactive runs ask which one to use
+
 ## [0.1.0] — 2026-11-01
 
 ### Added

@@ -26,29 +26,84 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v3
 
-      - name: Build
+      - name: Build distribution
         shell: bash
         run: ./gradlew :cli:installDist -PnoirVersion="${GITHUB_REF_NAME#v}" --console=plain
 
-      - name: Package (unix)
+      - name: Package app image (unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          mkdir -p dist
-          cd cli/build/install
-          zip -qr "$GITHUB_WORKSPACE/dist/noir-${GITHUB_REF_NAME}-${{ runner.os }}.zip" noir
+          set -euo pipefail
+          MAIN_JAR="$(basename "$(ls cli/build/install/noir/lib/cli-*.jar | head -1)")"
+          mkdir -p stage release
+          jpackage \
+            --type app-image \
+            --name NOIR \
+            --input cli/build/install/noir/lib \
+            --main-jar "$MAIN_JAR" \
+            --main-class app.noir.cli.MainKt \
+            --dest stage \
+            --app-version 1.0.0 \
+            --vendor Verlintas \
+            --description "Android leak audit" \
+            --java-options "-Dfile.encoding=UTF-8" \
+            --jlink-options "--strip-debug --no-man-pages --no-header-files --compress=2"
 
-      - name: Package (windows)
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            cat > "stage/Start NOIR.command" <<'SH'
+          #!/bin/bash
+          cd "$(dirname "$0")" || exit 1
+          ./NOIR.app/Contents/MacOS/NOIR "$@"
+          echo
+          read -n 1 -s -r -p "press any key to close"
+          SH
+            chmod +x "stage/Start NOIR.command"
+            (cd stage && zip -qry "../release/noir-${GITHUB_REF_NAME}-macOS-portable.zip" .)
+          else
+            cat > "stage/Start-NOIR.sh" <<'SH'
+          #!/bin/sh
+          cd "$(dirname "$0")" || exit 1
+          ./NOIR/bin/NOIR "$@"
+          echo
+          printf "press Enter to close"; read _
+          SH
+            chmod +x "stage/Start-NOIR.sh"
+            (cd stage && zip -qry "../release/noir-${GITHUB_REF_NAME}-Linux-portable.zip" .)
+          fi
+
+      - name: Package app image (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path cli/build/install/noir -DestinationPath "dist/noir-$env:GITHUB_REF_NAME-Windows.zip"
+          $ErrorActionPreference = "Stop"
+          $mainJar = (Get-ChildItem cli/build/install/noir/lib/cli-*.jar | Select-Object -First 1).Name
+          New-Item -ItemType Directory -Force -Path stage, release | Out-Null
+          jpackage `
+            --type app-image `
+            --name NOIR `
+            --input cli/build/install/noir/lib `
+            --main-jar $mainJar `
+            --main-class app.noir.cli.MainKt `
+            --dest stage `
+            --app-version 1.0.0 `
+            --vendor Verlintas `
+            --description "Android leak audit" `
+            --java-options "-Dfile.encoding=UTF-8" `
+            --jlink-options "--strip-debug --no-man-pages --no-header-files --compress=2"
+          @"
+          @echo off
+          cd /d "%~dp0"
+          "NOIR\NOIR.exe" %*
+          echo.
+          pause
+          "@ | Set-Content -Encoding ASCII "stage\Start NOIR.bat"
+          Compress-Archive -Path stage\* -DestinationPath "release/noir-$env:GITHUB_REF_NAME-Windows-portable.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: noir-${{ runner.os }}
-          path: dist/*.zip
+          path: release/*.zip
           if-no-files-found: error
 
   publish:
@@ -58,18 +113,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: release
           merge-multiple: true
 
       - name: checksums
         run: |
-          cd dist
+          cd release
           sha256sum *.zip > SHA256SUMS.txt
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/*.zip
-            dist/SHA256SUMS.txt
+            release/*.zip
+            release/SHA256SUMS.txt
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -25,13 +25,16 @@ import app.noir.core.jadx.Jadx
 import app.noir.core.platform.Platform
 import app.noir.core.platform.Setup
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.system.exitProcess
 
 private val VERSION: String =
     Guidance::class.java.`package`?.implementationVersion ?: "0.1.0-dev"
 
 private val BOOLEAN_FLAGS = setOf(
-    "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear"
+    "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear",
+    "all", "purge"
 )
 
 private var QUIET = false
@@ -74,6 +77,7 @@ private fun runMain(args: Array<String>) {
         "auto" -> cmdAuto(args.drop(1))
         "ui" -> cmdUi(args.drop(1))
         "deep" -> cmdDeep(args.drop(1))
+        "deepscan" -> cmdDeepScan(args.drop(1))
         "block" -> cmdBlock(args.drop(1))
         "setup" -> cmdSetup(args.drop(1))
         "doctor" -> cmdDoctor(args.drop(1))
@@ -108,6 +112,7 @@ private fun usage() {
           noir auto [options]                 scan + classify + plan
           noir ui [options]                   same, rendered as a dashboard
           noir deep <package> [options]       pull one APK, run jadx, grep for red flags
+          noir deepscan [options]             decompile the riskiest apps, then offer cleanup
           noir block <package...> [options]   print (or apply) neutralisation commands
 
         options:
@@ -119,9 +124,15 @@ private fun usage() {
           --adb <path>       override adb binary
           --jadx <path>      override jadx binary
 
-        auto only:
+        auto / deepscan:
           --apply            execute the safe, reversible app-ops actions
           --yes              skip confirmation prompts (automation)
+
+        deepscan only:
+          --top <n>          how many apps to decompile (default 15)
+          --all              decompile every flagged app (slow, lots of disk)
+          --jobs <n>         parallel jadx processes (default: cpu/2, max 6)
+          --purge            also offer to uninstall risky user apps
 
         display:
           --ascii            plain ASCII borders (legacy Windows console)
@@ -244,7 +255,8 @@ private data class ScanResult(
     val apps: List<AppEntry>,
     val outDir: File,
     val android: String,
-    val installed: Int
+    val installed: Int,
+    val paths: Map<String, String>
 )
 
 private fun cmdScan(raw: List<String>) {
@@ -564,7 +576,7 @@ private fun performScan(args: Args): ScanResult {
         .sortedByDescending { it.score }
         .take(limit)
 
-    return ScanResult(device, apps, outDir, android, paths.size)
+    return ScanResult(device, apps, outDir, android, paths.size, paths)
 }
 
 private fun writeReports(result: ScanResult, recommendations: List<Recommendation>) {
@@ -636,6 +648,260 @@ private fun progressLine(startedMs: Long, done: Int, total: Int): String {
         "  ·  ETA " + (eta / 60) + ":" + (eta % 60).toString().padStart(2, '0') + "  " + spin
 }
 
+
+// ── deep scan ──────────────────────────────────────────────────────────────
+
+private data class DeepFinding(
+    val pkg: String,
+    val score: Int,
+    val codeRisk: Int,
+    val signals: Map<String, Int>,
+    val src: File?,
+    val error: String?
+)
+
+private val DEEP_SIGNALS: Map<String, Pair<Regex, Int>> = linkedMapOf(
+    "exec" to (Regex("Runtime\\.exec|ProcessBuilder") to 4),
+    "dynamic-load" to (Regex("DexClassLoader|PathClassLoader|loadLibrary") to 3),
+    "disable-app" to (Regex("setApplicationEnabledSetting") to 5),
+    "a11y-hijack" to (Regex("enabled_accessibility_services") to 5),
+    "screen-capture" to (Regex("MediaProjection|createScreenCaptureIntent") to 4),
+    "reflection" to (Regex("Class\\.forName|getDeclaredMethod") to 1),
+    "crypto" to (Regex("Cipher\\.getInstance|MessageDigest") to 1),
+    "network" to (Regex("HttpURLConnection|OkHttpClient|openConnection") to 1)
+)
+
+private val DEEP_SKIP = listOf(
+    "androidx/", "kotlin/", "kotlinx/", "org/intellij/", "org/jetbrains/",
+    "com/google/gson/", "okhttp3/", "retrofit2/", "com/google/protobuf/"
+)
+
+private fun cmdDeepScan(raw: List<String>) {
+    val args = Args(raw)
+    val adb = connectAdb(args)
+    val scan = performScan(args)
+    val outDir = File(scan.outDir, "deepscan").apply { mkdirs() }
+
+    val top = args.value("top")?.toIntOrNull() ?: 15
+    val jobs = (args.value("jobs")?.toIntOrNull()
+        ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(2)).coerceIn(1, 6)
+    val targets = if (args.flag("all")) scan.apps else scan.apps.take(top)
+
+    if (targets.isEmpty()) {
+        println("没有被标记的应用，不需要 DeepScan。")
+        return
+    }
+
+    val jadxBin = Platform.findJadx(args.value("jadx"))
+        ?: throw NoirException("没有找到 jadx。", Guidance.jadxMissing())
+
+    println()
+    println("== DeepScan ==")
+    println("  目标    ${targets.size} 个应用（共 ${scan.apps.size} 个被标记）")
+    println("  并行    $jobs 个 jadx 进程")
+    println("  输出    ${outDir.absolutePath}")
+    if (args.flag("all")) println("  注意    --all 会反编译所有被标记应用，可能耗时数小时、占用数 GB")
+    println()
+
+    val pool = Executors.newFixedThreadPool(jobs)
+    val done = AtomicInteger()
+    val started = System.currentTimeMillis()
+
+    val findings = targets.map { app ->
+        pool.submit<DeepFinding> {
+            val result = try {
+                analyzeOne(adb, scan, outDir, jadxBin, app)
+            } catch (e: Exception) {
+                DeepFinding(app.pkg, app.score, 0, emptyMap(), null, e.message ?: e::class.simpleName)
+            }
+            val n = done.incrementAndGet()
+            val elapsed = (System.currentTimeMillis() - started) / 1000
+            println("  [$n/${targets.size}] ${app.pkg}  code-risk=${result.codeRisk}  (${elapsed}s)")
+            result
+        }
+    }.map { future ->
+        try {
+            future.get()
+        } catch (e: Exception) {
+            DeepFinding("unknown", 0, 0, emptyMap(), null, e.message)
+        }
+    }
+    pool.shutdown()
+
+    val ranked = findings.sortedByDescending { it.codeRisk }
+    writeDeepReports(outDir, ranked)
+
+    println()
+    println("%5s %5s  %-44s %s".format("RISK", "SCAN", "PACKAGE", "SIGNALS"))
+    ranked.take(20).forEach { f ->
+        val signals = f.signals.entries.sortedByDescending { it.value }.take(3)
+            .joinToString(", ") { "${it.key}x${it.value}" }
+            .ifBlank { f.error ?: "-" }
+        println("%5d %5d  %-44s %s".format(f.codeRisk, f.score, f.pkg, signals))
+    }
+    println()
+    println("[+] ${File(outDir, "deepscan.md").absolutePath}")
+    println("[+] ${File(outDir, "deepscan.tsv").absolutePath}")
+
+    offerCleanup(args, adb, scan, ranked)
+}
+
+private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String, app: AppEntry): DeepFinding {
+    val remote = scan.paths[app.pkg]
+        ?: return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "no apk path")
+
+    val apk = File(outDir, "apks/${app.pkg}.apk")
+    if (!apk.exists()) {
+        apk.parentFile?.mkdirs()
+        adb.pull(scan.device.serial, remote, apk)
+    }
+    if (!apk.exists()) {
+        return DeepFinding(app.pkg, app.score, 0, emptyMap(), null, "pull failed")
+    }
+
+    val src = File(outDir, "src/${app.pkg}")
+    val marker = File(src, ".noir-ok")
+    if (!(marker.exists() && marker.readText().trim() == remote)) {
+        src.deleteRecursively()
+        src.mkdirs()
+        Jadx(jadxBin).decompile(apk, src)
+        runCatching { marker.writeText(remote) }
+    }
+
+    val signals = countSignals(src)
+    val risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
+        (signals[key] ?: 0).coerceAtMost(3) * def.second
+    }.coerceAtMost(30)
+
+    return DeepFinding(app.pkg, app.score, risk, signals, src, null)
+}
+
+private fun countSignals(dir: File): Map<String, Int> {
+    val counts = HashMap<String, Int>()
+    if (!dir.exists()) return counts
+
+    var budget = 40L * 1024 * 1024
+    val files = dir.walkTopDown()
+        .filter { it.isFile && (it.extension == "java" || it.extension == "kt") }
+        .filter { file ->
+            val path = file.relativeTo(dir).path
+            DEEP_SKIP.none { path.startsWith(it) }
+        }
+        .take(8000)
+
+    for (file in files) {
+        if (budget <= 0) break
+        val text = try {
+            file.readText()
+        } catch (e: Exception) {
+            continue
+        }
+        budget -= text.length
+        DEEP_SIGNALS.forEach { (key, def) ->
+            val hits = def.first.findAll(text).count()
+            if (hits > 0) counts[key] = (counts[key] ?: 0) + hits
+        }
+    }
+    return counts
+}
+
+private fun writeDeepReports(outDir: File, findings: List<DeepFinding>) {
+    val tsv = StringBuilder("code_risk\tscan_score\tpackage\tsignals\terror\n")
+    findings.forEach { f ->
+        val signals = f.signals.entries.joinToString(";") { "${it.key}=${it.value}" }
+        tsv.append(f.codeRisk).append('\t')
+            .append(f.score).append('\t')
+            .append(f.pkg).append('\t')
+            .append(signals).append('\t')
+            .append(f.error ?: "").append('\n')
+    }
+    File(outDir, "deepscan.tsv").writeText(tsv.toString())
+
+    val md = StringBuilder()
+    md.append("# DeepScan\n\n")
+    md.append("| code risk | scan score | package | signals | error |\n")
+    md.append("|---:|---:|---|---|---|\n")
+    findings.forEach { f ->
+        val signals = f.signals.entries.sortedByDescending { it.value }
+            .joinToString(", ") { "${it.key} ×${it.value}" }
+        md.append("| ").append(f.codeRisk)
+            .append(" | ").append(f.score)
+            .append(" | `").append(f.pkg).append("`")
+            .append(" | ").append(signals.ifBlank { "—" })
+            .append(" | ").append(f.error ?: "")
+            .append(" |\n")
+    }
+    md.append("\n## details\n")
+    findings.forEach { f ->
+        md.append("\n### ").append(f.pkg).append("\n\n")
+        md.append("- code risk: ").append(f.codeRisk).append("\n")
+        md.append("- scan score: ").append(f.score).append("\n")
+        if (f.signals.isNotEmpty()) {
+            md.append("- signals: ").append(f.signals.entries.joinToString(", ") { "${it.key}=${it.value}" }).append("\n")
+        }
+        f.src?.let { md.append("- sources: `").append(it.absolutePath).append("`\n") }
+        if (f.error != null) md.append("- error: ").append(f.error).append("\n")
+    }
+    File(outDir, "deepscan.md").writeText(md.toString())
+}
+
+private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<DeepFinding>) {
+    val high = findings.filter { it.codeRisk >= 8 && it.error == null }
+    if (high.isEmpty()) {
+        println()
+        println("没有代码级高风险项，不需要额外清理。")
+        return
+    }
+
+    val highPkgs = high.map { it.pkg }.toSet()
+    val appsByPkg = scan.apps.associateBy { it.pkg }
+    val planned = plannedCommands(Advisor.advise(scan.apps).filter { it.pkg in highPkgs })
+
+    println()
+    println("== 代码级高风险 ${high.size} 个 ==")
+    high.forEach { f ->
+        val system = appsByPkg[f.pkg]?.isSystem ?: true
+        println("  %-44s risk %2d  %s".format(f.pkg, f.codeRisk, if (system) "system" else "user"))
+    }
+    println("  可执行的安全 appops: ${planned.size} 条")
+
+    if (!args.flag("apply")) {
+        println()
+        println("[*] dry-run — 加 --apply 执行安全清理；加 --purge 可同时卸载高风险用户应用")
+        return
+    }
+
+    if (!args.flag("yes") && isInteractive()) {
+        print("执行这 ${planned.size} 条 appops? [y/N] ")
+        val answer = readLine()?.trim()?.lowercase()
+        if (answer != "y" && answer != "yes") {
+            println("已跳过。")
+            return
+        }
+    }
+    applyCommands(adb, scan, planned)
+
+    if (!args.flag("purge")) return
+
+    val userHigh = high.filter { appsByPkg[it.pkg]?.isSystem == false }
+    if (userHigh.isEmpty()) {
+        println("高风险项里没有用户应用，无需卸载。")
+        return
+    }
+    println()
+    println("== 卸载高风险用户应用 ==")
+    println("# 恢复命令：adb shell pm install-existing --user 0 <package>")
+    userHigh.forEach { f ->
+        if (!args.flag("yes") && isInteractive()) {
+            print("  卸载 ${f.pkg}? [y/N] ")
+            val answer = readLine()?.trim()?.lowercase()
+            if (answer != "y" && answer != "yes") return@forEach
+        }
+        val result = adb.shell(scan.device.serial, "pm uninstall --user 0 ${f.pkg}")
+        println("  %-44s %s".format(f.pkg, if (result.ok) "uninstalled" else "failed (${result.code})"))
+    }
+}
+
 // ── plumbing ───────────────────────────────────────────────────────────────
 
 private fun isInteractive(): Boolean =
@@ -659,13 +925,35 @@ private fun awaitDevice(adb: Adb, requested: String?, interactive: Boolean): Dev
         val devices = adb.devices()
         val online = devices.filter { it.state == "device" }
 
-        online.firstOrNull { requested == null || it.serial == requested }?.let { return it }
+        if (requested != null) {
+            online.firstOrNull { it.serial == requested }?.let { return it }
+            if (online.isNotEmpty()) {
+                throw NoirException(
+                    "没有找到设备 $requested。",
+                    "当前已连接：" + online.joinToString { "${it.serial} (${it.model})" }
+                )
+            }
+        } else if (online.size == 1) {
+            return online.first()
+        } else if (online.size > 1) {
+            // Prefer a physical device over an emulator when both are attached.
+            val physical = online.filterNot { it.serial.startsWith("emulator-") }
+            if (physical.size == 1) return physical.first()
 
-        if (requested != null && online.isNotEmpty()) {
-            throw NoirException(
-                "没有找到设备 $requested。",
-                "当前已连接：" + online.joinToString { "${it.serial} (${it.model})" }
-            )
+            if (interactive) {
+                println("检测到多台设备：")
+                online.forEachIndexed { index, device ->
+                    println("  ${index + 1}) ${device.serial}  ${device.model}")
+                }
+                print("选择设备 [1-${online.size}] ")
+                val choice = readLine()?.trim()?.toIntOrNull()
+                if (choice != null && choice in 1..online.size) return online[choice - 1]
+                throw NoirException("没有选择设备。", "用 --serial <id> 指定要扫描的设备。")
+            }
+
+            val chosen = physical.firstOrNull() ?: online.first()
+            println("提示：检测到 ${online.size} 台设备，使用 ${chosen.serial}；可用 --serial 指定。")
+            return chosen
         }
 
         val unauthorized = devices.any { it.state == "unauthorized" }

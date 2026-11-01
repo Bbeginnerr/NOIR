@@ -132,19 +132,28 @@ scoop install adb jadx
 
 ## 安装
 
-**方式一：下载发布包**
+**方式一：下载即用（推荐）**
 
-到 [Releases](https://github.com/Verlintas/NOIR/releases) 下载对应平台的 zip：
+到 [Releases](https://github.com/Verlintas/NOIR/releases) 下载对应平台的 portable 包：
 
 ```
-noir-v0.1.0-macOS.zip
-noir-v0.1.0-Windows.zip
-noir-v0.1.0-Linux.zip
+noir-v0.1.1-macOS-portable.zip
+noir-v0.1.1-Windows-portable.zip
+noir-v0.1.1-Linux-portable.zip
 SHA256SUMS.txt
 ```
 
-解压后直接运行 `bin/noir`（Windows 是 `bin\noir.bat`）。需要 **JDK 17+**，其余依赖
-（`adb`、`jadx`）首次运行时会问你要不要自动下载。
+解压后**双击启动器**即可，包内自带运行时，**不需要安装 Java**：
+
+| 系统 | 双击这个 | 如果被拦 |
+|---|---|---|
+| macOS | `Start NOIR.command` | 右键 → 打开；或 `xattr -dr com.apple.quarantine "Start NOIR.command" NOIR.app` |
+| Windows | `Start NOIR.bat` | SmartScreen → 更多信息 → 仍要运行 |
+| Linux | `Start-NOIR.sh` | 先 `chmod +x Start-NOIR.sh`，或在终端执行 |
+
+启动器会打开一个终端窗口跑完向导，并在结束时停住（不会一闪而过）。
+
+`adb` 和 `jadx` 不在包里——首次运行会询问是否自动下载到 `~/.noir/tools`。
 
 **方式二：从源码构建**
 
@@ -234,6 +243,27 @@ noir block com.example.app --apply
 | `--adb <path>` / `--jadx <path>` | 手动指定工具路径 |
 | `--yes` | 自动化场景下跳过确认 |
 
+## DeepScan：一条命令反编译 + 处置
+
+```bash
+noir deepscan                  # 反编译风险最高的 15 个应用
+noir deepscan --top 30         # 更多
+noir deepscan --all            # 全部被标记应用（慢，占磁盘）
+noir deepscan --jobs 4         # 并行 jadx 数量
+```
+
+流程是：扫描 → 按风险排序 → 逐个 `adb pull` + `jadx` → 统计代码级信号
+（`Runtime.exec`、`DexClassLoader`、`setApplicationEnabledSetting`、
+`enabled_accessibility_services`、`MediaProjection` …）→ 输出
+`deepscan.md` / `deepscan.tsv` → 询问是否清理。
+
+```bash
+noir deepscan --apply          # 分析后执行安全 appops
+noir deepscan --apply --purge  # 再逐个确认卸载高风险用户应用
+```
+
+反编译结果按 `包名 + APK 路径` 缓存，第二次跑同一个应用会直接复用。
+
 ## 输出
 
 ```
@@ -313,6 +343,8 @@ app-ops 或 DNS 层拦截。
 ## 路线图
 
 - [x] 等宽仪表盘（`noir ui`）
+- [x] DeepScan（批量反编译 + 代码级信号）
+- [x] 自带运行时的双击即用包（jpackage）
 - [ ] 图形界面（Compose Multiplatform）
 - [ ] 规则文件可配置（YAML），支持社区规则包
 - [ ] 与 `apktool` / `jadx` 的批量流水线
