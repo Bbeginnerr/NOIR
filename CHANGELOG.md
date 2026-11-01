@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-11-01
+
+### Fixed
+
+- `--apply` in a non-interactive run (piped stdin, CI) now refuses to execute
+  unless `--yes` is also passed. `deepscan --apply` previously skipped the
+  confirmation because it only prompted on a TTY.
+
 ## [0.2.2] — 2026-11-01
 
 ### Changed

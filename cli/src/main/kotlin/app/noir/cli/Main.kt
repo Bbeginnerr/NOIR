@@ -309,6 +309,10 @@ private fun cmdAuto(raw: List<String>) {
     }
 
     if (!args.flag("yes")) {
+        if (!isInteractive()) {
+            println("[!] --apply 在非交互环境下需要同时加 --yes")
+            return
+        }
         print("执行 ${planned.size} 条 appops 动作? [y/N] ")
         val answer = readLine()?.trim()?.lowercase()
         if (answer != "y" && answer != "yes") {
@@ -925,7 +929,11 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
         return
     }
 
-    if (!args.flag("yes") && isInteractive()) {
+    if (!args.flag("yes")) {
+        if (!isInteractive()) {
+            println("[!] --apply 在非交互环境下需要同时加 --yes")
+            return
+        }
         print("执行这 ${planned.size} 条 appops? [y/N] ")
         val answer = readLine()?.trim()?.lowercase()
         if (answer != "y" && answer != "yes") {
