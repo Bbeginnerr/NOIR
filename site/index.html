@@ -146,20 +146,19 @@
   <section class="reveal" id="demo">
     <p class="sec-label">03 / Demo</p>
     <h2>Run it here, simulated.</h2>
-    <p>Same dashboard layout as <code>noir ui</code>, rebuilt from the real renderer. Press <b>replay scan</b> to watch a simulated run. No device is touched and nothing leaves this page.</p>
+    <p>A full guided <code>noir</code> run: device detection, scan, dashboard, then reversible app-ops. Click <b>Y</b> at the prompts. Everything is simulated and stays on this page.</p>
 
     <div class="demo">
       <div class="demo-bar">
         <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="demo-title">noir — zsh</span>
-        <span class="demo-size">100×48 · simulated</span>
-        <span class="demo-pan">swipe →</span>
+        <span class="demo-size" id="demo-size">100×18 · simulated</span>
+        <span class="demo-pan">tap Y · swipe →</span>
       </div>
-      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="simulated terminal output"><div class="tui-fallback">JavaScript is off — run <code>noir ui</code> in your terminal to see this live.</div></div>
+      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="simulated terminal output"><div class="tui-fallback">JavaScript is off — run <code>noir</code> in your terminal to see this flow.</div></div>
       <div class="demo-actions">
-        <button id="demo-run" type="button">replay scan</button>
-        <button id="demo-reset" type="button">reset</button>
-        <span class="demo-note">simulated output · no device involved</span>
+        <button id="demo-reset" type="button">restart demo</button>
+        <span class="demo-note">click Y / N in the terminal · simulated</span>
       </div>
     </div>
   </section>

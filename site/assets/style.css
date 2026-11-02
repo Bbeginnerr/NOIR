@@ -276,12 +276,14 @@ p { margin: 0 0 14px; color: #b9b9c0; max-width: 70ch; }
 .demo-pan { display: none; color: var(--cyan); }
 .demo-body {
   padding: 16px 18px 18px;
-  min-height: 840px;
+  height: 320px;
   background: #070709;
   font-size: 12px;
   line-height: 1.42;
   overflow: auto;
+  transition: height .32s ease;
 }
+.demo-body.expanded { height: 880px; }
 .demo-body .dim { color: var(--dim); }
 .demo-body .ok { color: var(--cyan); }
 .demo-body .good { color: var(--green); }
@@ -290,6 +292,15 @@ p { margin: 0 0 14px; color: #b9b9c0; max-width: 70ch; }
 .demo-body .bad { color: var(--red); }
 
 /* simulated scan log */
+.tui-run,
+.tui-wizard,
+.tui-after,
+.tui-apply-note,
+.tui-apply-log,
+.tui-rollback,
+.tui-prompt,
+.tui-ask { width: 100ch; }
+
 .tui-run {
   margin: 0;
   color: #c9c9d1;
@@ -421,6 +432,48 @@ p { margin: 0 0 14px; color: #b9b9c0; max-width: 70ch; }
   vertical-align: -2px;
   animation: blink 1.15s steps(1) infinite;
 }
+.tui-command { color: #c9c9d1; }
+.tui-command .ok { color: var(--cyan); }
+.tui-wizard .tui-banner {
+  margin: 0 0 4px;
+  color: #c9c9d1;
+  font-size: .9em;
+  line-height: 1.1;
+  white-space: pre;
+}
+.tui-wizard .tui-first { padding-left: 2ch; color: var(--dim); }
+.tui-wizard .tui-kv { padding-left: 2ch; }
+.tui-wizard-gap { height: 10px; }
+
+.tui-ask {
+  display: block;
+  margin-top: 12px;
+  padding-left: 2ch;
+  white-space: pre;
+}
+.tui-ask .ask-q { white-space: pre; }
+.tui-choice {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cyan);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tui-choice:hover { color: var(--fg); }
+.tui-choice:focus-visible { outline: 1px solid var(--cyan); outline-offset: 2px; }
+
+.tui-apply-note { margin-top: 14px; padding-left: 2ch; color: var(--dim); }
+.tui-apply-log { margin-top: 8px; padding-left: 2ch; }
+.tui-apply { display: flex; gap: 2ch; white-space: pre; }
+.tui-apply .cmd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tui-apply .status { color: var(--green); }
+.tui-rollback { margin-top: 8px; padding-left: 2ch; color: var(--dim); }
+.tui-rollback .path { color: #c9c9d1; }
+
 .tui-fallback { white-space: normal; color: var(--dim); }
 
 .demo-actions {
@@ -555,9 +608,17 @@ footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; 
   .demo-bar { padding: 8px 10px; }
   .demo-size { display: none; }
   .demo-pan { display: inline; justify-self: end; }
-  .demo-body { min-height: 690px; padding: 10px; font-size: 10px; }
+  .demo-body { height: 300px; padding: 10px; font-size: 10px; }
+  .demo-body.expanded { height: 740px; }
   .tui { padding: 10px 12px; }
   .tui-sec { margin: 10px 0 3px; }
+  .tui-wizard,
+  .tui-after,
+  .tui-apply-note,
+  .tui-rollback,
+  .tui-prompt,
+  .tui-ask { width: auto; }
+  .tui-ask { white-space: normal; }
   .demo-note { display: none; }
   .code { white-space: pre-wrap; overflow-wrap: anywhere; }
   .contact-row { grid-template-columns: 80px 1fr; }

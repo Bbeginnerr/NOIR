@@ -146,20 +146,19 @@
   <section class="reveal" id="demo">
     <p class="sec-label">03 / 演示</p>
     <h2>在这里运行，模拟的。</h2>
-    <p>和 <code>noir ui</code> 相同的仪表盘布局，由真实渲染器复刻。按「重播扫描」查看一次模拟运行。不触碰设备，也不会有数据离开这个页面。</p>
+    <p>完整跑一遍 <code>noir</code> 向导：设备检测、扫描、仪表盘，再到可回滚的 app-ops。按提示点 <b>Y</b> 即可。全程模拟，不涉及真实设备。</p>
 
     <div class="demo">
       <div class="demo-bar">
         <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="demo-title">noir — zsh</span>
-        <span class="demo-size">100×48 · 模拟</span>
-        <span class="demo-pan">横滑 →</span>
+        <span class="demo-size" id="demo-size">100×18 · 模拟</span>
+        <span class="demo-pan">点 Y · 横滑 →</span>
       </div>
-      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="模拟的终端输出"><div class="tui-fallback">JavaScript 已关闭——在终端运行 <code>noir ui</code> 可查看真实输出。</div></div>
+      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="模拟的终端输出"><div class="tui-fallback">JavaScript 已关闭——在终端运行 <code>noir</code> 可查看完整流程。</div></div>
       <div class="demo-actions">
-        <button id="demo-run" type="button">重播扫描</button>
-        <button id="demo-reset" type="button">重置</button>
-        <span class="demo-note">模拟输出 · 不涉及真实设备</span>
+        <button id="demo-reset" type="button">重新演示</button>
+        <span class="demo-note">在终端里点 Y / N · 模拟输出</span>
       </div>
     </div>
   </section>

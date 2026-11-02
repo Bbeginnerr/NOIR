@@ -131,9 +131,19 @@
 
   /* ── interactive terminal demo ───────────────────────────────────────── */
   var demoBody = document.getElementById("demo-body");
-  var demoRun = document.getElementById("demo-run");
   var demoReset = document.getElementById("demo-reset");
-  if (!demoBody || !demoRun) return;
+  var demoSize = document.getElementById("demo-size");
+  if (!demoBody) return;
+
+  var zh = /^zh/i.test(document.documentElement.lang || "");
+  var TEXT = {
+    firstRun: zh ? "首次运行向导 · Ctrl+C 随时退出" : "first run · Ctrl+C to quit",
+    scanAsk: zh ? "开始扫描并生成报告?" : "Start scan and write report?",
+    applyNote: zh ? "可以安全执行 19 条（appops，可回滚）" : "19 app-ops can be applied safely (reversible)",
+    applyAsk: zh ? "现在执行?" : "Apply now?",
+    skipped: zh ? "已跳过。之后可以运行：noir auto --apply" : "skipped. run later: noir auto --apply",
+    cancelled: zh ? "已取消。" : "cancelled."
+  };
 
   var LOGO = [
     "███╗   ██╗ ██████╗ ██╗██████╗ ",
@@ -143,6 +153,9 @@
     "██║ ╚████║╚██████╔╝██║██║  ██║",
     "╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝"
   ];
+  var BANNER = LOGO.map(function (line) {
+    return "  " + line.replace(/\s+$/, "");
+  }).join("\n");
 
   var EXPOSURE = [
     ["系统", 119, 46],
@@ -170,8 +183,34 @@
     [31, "系统", "com.miui.contentcatcher", 0, 0]
   ];
 
+  var APPLY_COMMANDS = [
+    "cmd appops set com.miui.securitycenter PROJECT_MEDIA ignore",
+    "cmd appops set com.xiaomi.aiasst.vision PROJECT_MEDIA ignore",
+    "cmd appops set com.xiaomi.aiasst.service PROJECT_MEDIA ignore",
+    "cmd appops set com.miui.powerkeeper GET_USAGE_STATS ignore",
+    "cmd appops set com.bsp.catchlog GET_USAGE_STATS ignore",
+    "cmd appops set com.xiaomi.location.fused GET_USAGE_STATS ignore",
+    "cmd appops set com.google.android.gms GET_USAGE_STATS ignore",
+    "cmd appops set com.android.dynsystem GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.qr GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.contentcatcher GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.analytics GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.systemAdSolution GET_USAGE_STATS ignore",
+    "cmd appops set com.xiaomi.mipicks GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.msa.global GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.video GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.player GET_USAGE_STATS ignore",
+    "cmd appops set com.xiaomi.market GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.hybrid GET_USAGE_STATS ignore",
+    "cmd appops set com.miui.securityadd GET_USAGE_STATS ignore"
+  ];
+
   var SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
   var scanSteps = 256;
+
+  var running = false;
+  var generation = 0;
+  var activePrompt = null;
 
   function repeat(text, count) {
     var out = "";
@@ -254,29 +293,135 @@
       '<div class="tui-planrow"><span class="k">auto-safe</span><span>' +
       '<span class="safe-n">19</span> <span class="dim">reversible appops, rollback written next to the report</span>' +
       "</span></div></div>" +
-      "</div>" +
-
-      '<div class="tui-after">' +
-      '<div><span class="report-k">report</span>&nbsp;&nbsp;/Users/verlintas/NOIR/noir-out</div>' +
-      '<div class="tui-prompt"><span class="ok">$</span> <span class="tui-caret"></span></div>' +
       "</div>";
   }
 
-  var running = false;
-  var generation = 0;
-
-  function runLine(parent, html) {
-    var div = document.createElement("div");
-    div.innerHTML = html;
-    parent.appendChild(div);
-    return div;
+  function reportHTML() {
+    return '<div class="tui-after"><div><span class="report-k">report</span>&nbsp;&nbsp;' +
+      "/Users/verlintas/NOIR/noir-out</div></div>";
   }
 
-  async function runDemo() {
+  function scrollBottom() {
+    demoBody.scrollTop = demoBody.scrollHeight;
+  }
+
+  function keepTerminalBottom() {
+    var rect = demoBody.getBoundingClientRect();
+    var overflow = rect.bottom - (window.innerHeight - 16);
+    if (overflow > 0) {
+      window.scrollBy({
+        top: overflow,
+        behavior: reduced ? "auto" : "smooth"
+      });
+    }
+  }
+
+  function finishFlow(message) {
+    demoBody.scrollLeft = 0;
+    if (message) {
+      var line = document.createElement("div");
+      line.className = "tui-rollback";
+      line.textContent = message;
+      demoBody.appendChild(line);
+    }
+    var prompt = document.createElement("div");
+    prompt.className = "tui-prompt";
+    prompt.innerHTML = '<span class="ok">$</span> <span class="tui-caret"></span>';
+    demoBody.appendChild(prompt);
+    scrollBottom();
+  }
+
+  function ask(question, yes, no, callback) {
+    var wrap = document.createElement("div");
+    wrap.className = "tui-ask";
+    wrap.innerHTML = '<span class="ask-q">' + question + " [</span>" +
+      '<button type="button" class="tui-choice" data-choice="y">' + yes + "</button>" +
+      '<span class="dim">/</span>' +
+      '<button type="button" class="tui-choice" data-choice="n">' + no + "</button>" +
+      '<span>]</span><span class="tui-caret"></span>';
+    demoBody.appendChild(wrap);
+    demoBody.scrollLeft = 0;
+    scrollBottom();
+
+    function resolve(choice) {
+      if (prompt.done) return;
+      prompt.done = true;
+      if (activePrompt === prompt) activePrompt = null;
+      wrap.innerHTML = '<span class="ask-q">' + question + " [" + yes + "/" + no + "] </span>" +
+        '<span class="ok">' + (choice === "y" ? yes : no) + "</span>";
+      try { demoBody.focus({ preventScroll: true }); } catch (e) { demoBody.focus(); }
+      callback(choice === "y" ? "y" : "n");
+    }
+
+    var prompt = {
+      done: false,
+      resolve: resolve
+    };
+    activePrompt = prompt;
+
+    wrap.addEventListener("click", function (event) {
+      var target = event.target;
+      while (target && target !== wrap) {
+        if (target.tagName === "BUTTON" && target.getAttribute("data-choice")) {
+          prompt.resolve(target.getAttribute("data-choice"));
+          return;
+        }
+        target = target.parentNode;
+      }
+    });
+
+    return prompt;
+  }
+
+  demoBody.addEventListener("click", function (event) {
+    if (!event.target.closest || !event.target.closest("button")) {
+      demoBody.focus({ preventScroll: true });
+    }
+  });
+
+  demoBody.addEventListener("keydown", function (event) {
+    if (!activePrompt) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    var key = (event.key || "").toLowerCase();
+    if (key !== "y" && key !== "n") return;
+    event.preventDefault();
+    activePrompt.resolve(key);
+  });
+
+  function renderWizard() {
+    generation++;
+    running = false;
+    activePrompt = null;
+    demoBody.classList.remove("expanded");
+    if (demoSize) demoSize.textContent = "100×18 · " + (zh ? "模拟" : "simulated");
+    demoBody.scrollTop = 0;
+    demoBody.scrollLeft = 0;
+    demoBody.innerHTML = '<div class="tui-wizard">' +
+      '<div class="tui-command"><span class="ok">$</span> noir</div>' +
+      '<pre class="tui-banner">' + BANNER + "</pre>" +
+      '<div class="tui-first">' + TEXT.firstRun + "</div>" +
+      '<div class="tui-wizard-gap"></div>' +
+      '<div class="tui-kv"><span class="k">device</span>' +
+      '<span class="v">2509FPN0BC  (178b0d2f)</span></div>' +
+      "</div>";
+
+    ask(TEXT.scanAsk, "Y", "n", function (choice) {
+      if (choice === "y") {
+        var token = generation;
+        setTimeout(function () {
+          if (token === generation) runScan();
+        }, reduced ? 0 : 220);
+      } else {
+        finishFlow(TEXT.cancelled);
+      }
+    });
+  }
+
+  async function runScan() {
     if (running) return;
     running = true;
     var mine = ++generation;
-    demoRun.disabled = true;
+    activePrompt = null;
     demoBody.scrollLeft = 0;
     demoBody.scrollTop = 0;
     demoBody.innerHTML = "";
@@ -285,25 +430,32 @@
     log.className = "tui-run";
     demoBody.appendChild(log);
 
-    runLine(log, '<span class="prompt">$</span> noir ui');
+    function runLine(html) {
+      var div = document.createElement("div");
+      div.innerHTML = html;
+      log.appendChild(div);
+      return div;
+    }
+
+    runLine('<span class="prompt">$</span> noir');
     await sleep(reduced ? 0 : 240);
     if (mine !== generation) return;
 
-    runLine(log, '[*] host: Mac OS X aarch64');
-    runLine(log, '[*] device: 178b0d2f (2509FPN0BC)');
+    runLine('[*] host: Mac OS X aarch64');
+    runLine('[*] device: 178b0d2f (2509FPN0BC)');
     await sleep(reduced ? 0 : 100);
-    runLine(log, '[*] packages: 501');
+    runLine('[*] packages: 501');
     await sleep(reduced ? 0 : 100);
-    runLine(log, '[*] reading dumpsys package ... 312 KiB');
+    runLine('[*] reading dumpsys package ... 312 KiB');
     await sleep(reduced ? 0 : 130);
-    runLine(log, '[*] parsed: 498');
-    runLine(log, '[*] candidates (internet + sensitive): 256');
+    runLine('[*] parsed: 498');
+    runLine('[*] candidates (internet + sensitive): 256');
     await sleep(reduced ? 0 : 120);
-    runLine(log, '[*] analysing 256 new/changed APKs (cache hits: 0)');
+    runLine('[*] analysing 256 new/changed APKs (cache hits: 0)');
     await sleep(reduced ? 0 : 160);
     if (mine !== generation) return;
 
-    var progress = runLine(log, "");
+    var progress = runLine("");
     var frames = reduced ? 1 : 56;
     for (var i = 0; i <= frames; i++) {
       if (mine !== generation) return;
@@ -324,23 +476,58 @@
     await sleep(reduced ? 0 : 260);
     if (mine !== generation) return;
 
-    demoBody.innerHTML = dashboardHTML();
+    demoBody.innerHTML = dashboardHTML() + reportHTML();
+    demoBody.classList.add("expanded");
+    if (demoSize) demoSize.textContent = "100×48 · " + (zh ? "模拟" : "simulated");
     demoBody.scrollLeft = 0;
     demoBody.scrollTop = 0;
+    await sleep(reduced ? 0 : 900);
+    if (mine !== generation) return;
+
+    var note = document.createElement("div");
+    note.className = "tui-apply-note";
+    note.textContent = TEXT.applyNote;
+    demoBody.appendChild(note);
+
+    ask(TEXT.applyAsk, "y", "N", function (choice) {
+      if (choice === "y") applyFlow(mine);
+      else finishFlow(TEXT.skipped);
+    });
+    setTimeout(keepTerminalBottom, reduced ? 0 : 80);
     running = false;
-    demoRun.disabled = false;
+  }
+
+  async function applyFlow(token) {
+    if (token !== generation) return;
+    demoBody.scrollLeft = 0;
+    var log = document.createElement("div");
+    log.className = "tui-apply-log";
+    demoBody.appendChild(log);
+
+    for (var i = 0; i < APPLY_COMMANDS.length; i++) {
+      if (token !== generation) return;
+      var row = document.createElement("div");
+      row.className = "tui-apply";
+      row.innerHTML = '<span class="cmd">' + APPLY_COMMANDS[i] + '</span><span class="status">ok</span>';
+      log.appendChild(row);
+      scrollBottom();
+      await sleep(reduced ? 0 : 55);
+    }
+    if (token !== generation) return;
+
+    var rollback = document.createElement("div");
+    rollback.className = "tui-rollback";
+    rollback.innerHTML = '[*] rollback: <span class="path">' +
+      "/Users/verlintas/NOIR/noir-out/rollback.txt</span>";
+    demoBody.appendChild(rollback);
+    finishFlow();
+    keepTerminalBottom();
   }
 
   function resetDemo() {
-    generation++;
-    running = false;
-    demoRun.disabled = false;
-    demoBody.scrollLeft = 0;
-    demoBody.scrollTop = 0;
-    demoBody.innerHTML = dashboardHTML();
+    renderWizard();
   }
 
-  demoRun.addEventListener("click", runDemo);
   if (demoReset) demoReset.addEventListener("click", resetDemo);
-  resetDemo();
+  renderWizard();
 })();
