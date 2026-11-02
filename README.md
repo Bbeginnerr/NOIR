@@ -20,6 +20,8 @@ NOIR 是一个跑在电脑上的审计工具，通过 `adb` 读取已连接 Andr
 
 > 定位：**审计与自我防护**。面向自己的设备、自己的应用、已授权的安全研究。
 
+**官网 / Website:** https://verlintas.dev/noir/ · [中文](https://verlintas.dev/noir/zh/)
+
 ---
 
 ## 它做什么

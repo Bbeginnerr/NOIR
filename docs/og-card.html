@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --bg:#08080a;--fg:#e8e8ea;--dim:#8a8a92;--line:#24242c;--line2:#32323c;
+    --cyan:#22d3ee;--violet:#a78bfa;--amber:#fbbf24;--green:#34d399;--red:#f87171;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;width:1200px;height:630px;background:var(--bg);color:var(--fg);font-family:var(--mono)}
+  body{padding:52px;display:grid;grid-template-columns:1fr 450px;gap:44px;align-items:center}
+  .logo{
+    margin:0 0 18px;font-size:9.5px;line-height:1.15;font-weight:700;
+    background:linear-gradient(92deg,var(--cyan),var(--violet) 72%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;white-space:pre;
+  }
+  .kicker{color:var(--dim);font-size:12px;letter-spacing:.2em;text-transform:uppercase;margin:0 0 14px}
+  h1{font-size:40px;line-height:1.06;letter-spacing:-.04em;margin:0 0 16px;font-weight:700}
+  .lede{color:#b9b9c0;font-size:14px;line-height:1.6;margin:0 0 22px;max-width:38ch}
+  .url{color:var(--cyan);font-size:13px}
+  .url span{color:var(--dim)}
+  .term{border:1px solid var(--line2);background:#0a0a0e;font-size:12px;line-height:1.75;overflow:hidden}
+  .term-bar{display:flex;justify-content:space-between;padding:7px 11px;border-bottom:1px solid var(--line);color:var(--dim);font-size:11px}
+  .term-body{padding:12px 14px}
+  .dim{color:var(--dim)} .v{color:var(--violet)}
+  .mini{display:inline-block;height:8px;background:linear-gradient(90deg,var(--cyan),var(--violet));vertical-align:-1px}
+  .row{white-space:pre}
+</style>
+</head>
+<body>
+<div>
+  <pre class="logo">  ███╗   ██╗ ██████╗ ██╗██████╗
+  ████╗  ██║██╔═══██╗██║██╔══██╗
+  ██╔██╗ ██║██║   ██║██║██████╔╝
+  ██║╚██╗██║██║   ██║██║██╔══██╗
+  ██║ ╚████║╚██████╔╝██║██║  ██║
+  ╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝</pre>
+  <p class="kicker">android leak audit · adb · no root</p>
+  <h1>Your phone has 500 apps.<br>How many phone home?</h1>
+  <p class="lede">Permissions → data types → upload hosts → reversible fixes. Evidence, not vibes.</p>
+  <div class="url">github.com/Verlintas/NOIR <span>· MIT · macOS / Windows / Linux</span></div>
+</div>
+
+<div class="term">
+  <div class="term-bar"><span>noir ui</span><span>simulated</span></div>
+  <div class="term-body">
+    <div class="row"><span class="dim">device</span>   2509FPN0BC · android 16</div>
+    <div class="row"><span class="dim">flagged</span>  <span class="v">256</span> apps · 31 tracker domains</div>
+    <div class="row dim">&nbsp;</div>
+    <div class="row dim">EXPOSURE</div>
+    <div class="row">系统          <span class="mini" style="width:190px"></span> 119</div>
+    <div class="row">遥测/统计      <span class="mini" style="width:52px"></span>  32</div>
+    <div class="row">广告          <span class="mini" style="width:34px"></span>  21</div>
+    <div class="row">安全/杀毒      <span class="mini" style="width:13px"></span>   8</div>
+    <div class="row dim">&nbsp;</div>
+    <div class="row dim">TOP FINDINGS</div>
+    <div class="row"> 36  安全/杀毒   com.miui.securitycenter</div>
+    <div class="row"> 34  安全/杀毒   com.bsp.catchlog</div>
+    <div class="row"> 34  遥测/统计   com.xiaomi.aiasst.vision</div>
+    <div class="row dim">&nbsp;</div>
+    <div class="row dim">PLAN</div>
+    <div class="row"> ● HIGH 20   <span class="dim">● MED 51</span>   <span class="dim">● LOW 31</span></div>
+    <div class="row dim">19 reversible app-ops · rollback.txt</div>
+  </div>
+</div>
+</body>
+</html>

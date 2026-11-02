@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NOIR — Android leak audit</title>
+<meta name="description" content="Desktop audit of what an Android device can leak: permissions, endpoints, data flows, reversible fixes. adb only, no root. MIT.">
+<meta name="author" content="Verlintas">
+<meta name="theme-color" content="#08080a">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://verlintas.dev/noir/">
+<link rel="alternate" hreflang="en" href="https://verlintas.dev/noir/">
+<link rel="alternate" hreflang="zh" href="https://verlintas.dev/noir/zh/">
+<link rel="alternate" hreflang="x-default" href="https://verlintas.dev/noir/">
+
+<meta property="og:title" content="NOIR — Android leak audit">
+<meta property="og:description" content="What can your phone leak, and where does it go? adb only, no root, reversible fixes.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="NOIR">
+<meta property="og:url" content="https://verlintas.dev/noir/">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="zh_CN">
+<meta property="og:image" content="https://verlintas.dev/noir/assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="NOIR — Your phone has 500 apps. How many phone home?">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@Verlintas">
+<meta name="twitter:creator" content="@Verlintas">
+<meta name="twitter:title" content="NOIR — Android leak audit">
+<meta name="twitter:description" content="What can your phone leak, and where does it go? adb only, no root, reversible fixes.">
+<meta name="twitter:image" content="https://verlintas.dev/noir/assets/og.png">
+<meta name="twitter:image:alt" content="NOIR — Your phone has 500 apps. How many phone home?">
+
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="assets/manifest.webmanifest">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/app.js" defer></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "NOIR",
+  "applicationCategory": "SecurityApplication",
+  "operatingSystem": "macOS, Windows, Linux",
+  "url": "https://verlintas.dev/noir/",
+  "codeRepository": "https://github.com/Verlintas/NOIR",
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "description": "Desktop audit of what an Android device can leak: permissions, endpoints, data flows, reversible fixes."
+}
+</script>
+</head>
+<body>
+
+<a class="skip" href="#main">skip to content</a>
+
+<header>
+  <div class="bar">
+    <a class="brand" href="./">NOIR <span>— android leak audit</span></a>
+    <nav>
+      <a class="keep" href="#what">what</a>
+      <a href="#features">features</a>
+      <a href="#demo">demo</a>
+      <a href="#install">install</a>
+      <a href="#faq">faq</a>
+      <a class="keep" href="https://github.com/Verlintas/NOIR">github</a>
+      <span class="lang"><span class="active">EN</span> / <a class="lang-link" href="./zh/" hreflang="zh" lang="zh">中文</a></span>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+
+  <section class="hero">
+    <pre class="logo" role="img" aria-label="NOIR">  ███╗   ██╗ ██████╗ ██╗██████╗
+  ████╗  ██║██╔═══██╗██║██╔══██╗
+  ██╔██╗ ██║██║   ██║██║██████╔╝
+  ██║╚██╗██║██║   ██║██║██╔══██╗
+  ██║ ╚████║╚██████╔╝██║██║  ██║
+  ╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝</pre>
+
+    <p class="kicker">desktop · adb · no root · mit</p>
+
+    <h1>Your phone has 500 apps.<br>How many phone home?</h1>
+
+    <p class="lede">
+      NOIR reads what installed apps can collect and where they send it —
+      permissions, endpoints, data flows — then hands you reversible fixes.
+    </p>
+    <p class="cn" lang="zh">安卓隐私审计：谁在拿你的数据，发到哪里。</p>
+
+    <div class="cta">
+      <a class="btn primary" id="download-primary" href="https://github.com/Verlintas/NOIR/releases/latest">Download latest</a>
+      <a class="btn" id="download-all" href="https://github.com/Verlintas/NOIR/releases">All releases</a>
+      <a class="btn" href="https://github.com/Verlintas/NOIR">Source</a>
+      <a class="stars" id="stars" href="https://github.com/Verlintas/NOIR" hidden>★ <b>—</b> stars</a>
+    </div>
+    <p class="release" id="release-meta">latest release · macOS / Windows / Linux · MIT</p>
+
+    <pre class="term"><span class="p">$</span> noir
+  device   <span class="v">2509FPN0BC</span> · android 16
+  scan     <span class="bar"></span> 501/501
+  flagged  <span class="v">256</span> apps · 31 tracker domains
+  plan     <span class="d">19 app-ops · rollback.txt</span><span class="caret"></span></pre>
+  </section>
+
+  <section class="reveal" id="what">
+    <p class="sec-label">01 / What it does</p>
+    <h2>Evidence, not vibes.</h2>
+
+    <div class="rows">
+      <div class="row"><span class="n">01</span><span class="t"><b>Inventory</b> every app holding INTERNET plus a sensitive permission.</span></div>
+      <div class="row"><span class="n">02</span><span class="t"><b>Extract</b> endpoints from the APK itself, not from a permission label.</span></div>
+      <div class="row"><span class="n">03</span><span class="t"><b>Correlate</b> permissions to data types — location, contacts, SMS, mic, screen — and to upload hosts.</span></div>
+      <div class="row"><span class="n">04</span><span class="t"><b>Act</b> with app-ops that can be reverted, or a DNS list split into trackers / review / functional.</span></div>
+    </div>
+
+    <div class="flow" aria-hidden="true">
+      <div class="box"><b>permissions</b><span>what it can read</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>data types</b><span>location, SMS, mic…</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>upload hosts</b><span>from the APK</span></div>
+      <div class="arrow">→</div>
+      <div class="box"><b>fixes</b><span>app-ops, DNS tiers</span></div>
+    </div>
+  </section>
+
+  <section class="reveal" id="features">
+    <p class="sec-label">02 / Features</p>
+    <h2>Small tool, sharp edges.</h2>
+
+    <div class="grid">
+      <div class="card"><div class="k">MANIFEST</div><h3>Exported components</h3><p>Binary AXML parsed locally: exporters without permission, cleartext traffic, backup, debuggable, targetSdk.</p></div>
+      <div class="card"><div class="k">SHARED UID</div><h3>One uid, union of grants</h3><p>58 system packages can share a single Linux uid. NOIR shows who holds whose permissions.</p></div>
+      <div class="card"><div class="k">DEEPSCAN</div><h3>Code-level signals</h3><p>Batch jadx over the riskiest apps, then score exec, dynamic loading, accessibility hijacking, screen capture and SDKs.</p></div>
+      <div class="card"><div class="k">DNS</div><h3>Tiered blocklists</h3><p>Trackers are safe to import. Push, login, updates and payments are separated so you do not brick the phone.</p></div>
+      <div class="card"><div class="k">TUI</div><h3>Built for terminals</h3><p>CJK-aligned dashboard, gradient bars, one redraw per APK, ASCII fallback for legacy consoles.</p></div>
+      <div class="card"><div class="k">PORTABLE</div><h3>Double-click builds</h3><p>Bundled runtime on macOS, Windows and Linux. No JDK, no account, no telemetry.</p></div>
+    </div>
+  </section>
+
+  <section class="reveal" id="demo">
+    <p class="sec-label">03 / Demo</p>
+    <h2>Run it here, simulated.</h2>
+    <p>Same output as <code>noir ui</code>, replayed in the browser. No device is touched and nothing leaves this page.</p>
+
+    <div class="demo">
+      <div class="demo-bar"><span>noir — simulated session</span><span>macOS · zsh</span></div>
+      <div class="demo-body" id="demo-body" aria-label="simulated terminal output"><div class="l dim fallback">JavaScript is off — run noir ui in your terminal to see this live.</div></div>
+      <div class="demo-actions">
+        <button id="demo-run" type="button">run scan</button>
+        <button id="demo-reset" type="button">reset</button>
+        <span class="demo-note">simulated output · no device involved</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="reveal" id="install">
+    <p class="sec-label">04 / Install</p>
+    <h2>Two ways in.</h2>
+
+    <div class="cols">
+      <div>
+        <h3>Portable</h3>
+        <div class="code-wrap">
+<pre class="code"><span class="c"># download, unzip, double-click</span>
+<span class="p">→</span> Start NOIR.command   <span class="c">macOS</span>
+<span class="p">→</span> Start NOIR.bat       <span class="c">Windows</span>
+<span class="p">→</span> Start-NOIR.sh        <span class="c">Linux</span>
+
+<span class="c"># bundled runtime, no JDK needed</span></pre>
+          <button class="copy" type="button">copy</button>
+        </div>
+      </div>
+      <div>
+        <h3>From source</h3>
+        <div class="code-wrap">
+<pre class="code"><span class="p">$</span> git clone https://github.com/Verlintas/NOIR
+<span class="p">$</span> cd NOIR
+<span class="p">$</span> ./gradlew :cli:installDist
+<span class="p">$</span> ./cli/build/install/noir/bin/noir --about</pre>
+          <button class="copy" type="button">copy</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="cn" lang="zh">首次运行会问你要不要自动下载 adb / jadx；检测不到设备时会给出开发者模式与 USB 调试步骤，并等待 180 秒。</p>
+  </section>
+
+  <section class="reveal" id="limits">
+    <p class="sec-label">05 / Limits</p>
+    <h2>What it does not do.</h2>
+    <ul class="limits">
+      <li>Static evidence only: it proves capability and endpoints, not that a transfer happened.</li>
+      <li>Scans <code>base.apk</code>; code shipped in split APKs is a known lower bound.</li>
+      <li>No root, so system apps are disabled or restricted, never physically removed.</li>
+      <li>Unsigned builds: Gatekeeper and SmartScreen will ask once.</li>
+    </ul>
+  </section>
+
+  <section class="reveal" id="faq">
+    <p class="sec-label">06 / FAQ</p>
+    <h2>Before you ask.</h2>
+
+    <div class="faq">
+      <details>
+        <summary>Do I need root?</summary>
+        <p>No. Everything runs through <code>adb shell</code>. Uninstalling is limited to <code>--user 0</code>, so the system partition is never modified and a factory reset brings everything back.</p>
+      </details>
+      <details>
+        <summary>Will it break my phone?</summary>
+        <p>The default run is read-only. <code>--apply</code> only changes app-ops, each reversible with <code>default</code>; <code>rollback.txt</code> is written next to the report. Uninstalling is a separate, explicit command.</p>
+      </details>
+      <details>
+        <summary>Does it upload anything?</summary>
+        <p>No telemetry, no accounts, no analytics. Reports stay in your output directory. The only network access is <code>noir setup</code> downloading adb/jadx, and GitHub API calls on this page for the version and star count.</p>
+      </details>
+      <details>
+        <summary>Why static analysis instead of traffic capture?</summary>
+        <p>Static evidence answers “can this app read X and reach Y”, which works without root, without a VPN slot, and without trusting a certificate authority. It cannot prove that a transfer happened — pair it with DNS logs if you need that.</p>
+      </details>
+      <details>
+        <summary>Why can't it remove system apps?</summary>
+        <p>Without an unlocked bootloader and root, Android does not allow it. NOIR can disable or restrict them for the current user, and tells you exactly which app-op or domain is responsible.</p>
+      </details>
+      <details>
+        <summary>What is DeepScan?</summary>
+        <p><code>noir deepscan</code> pulls the riskiest APKs, runs jadx in parallel, and scores code-level signals: <code>Runtime.exec</code>, dynamic dex loading, accessibility rewriting, screen capture, device-id reads and known SDKs. It is a triage tool, not a decompiler replacement.</p>
+      </details>
+      <details>
+        <summary>Does it work on any Android?</summary>
+        <p>Yes, as long as <code>adb</code> can see the device. It has been tested on Xiaomi/HyperOS, AOSP emulators and vendor ROMs. Vendor-specific heuristics live in the classifier and are easy to extend.</p>
+      </details>
+      <details>
+        <summary>Why are some domains marked “functional”?</summary>
+        <p>Push, login, updates, payments, app stores and cloud sync need their endpoints. Blocking them takes out notifications or sign-in. NOIR splits exports into trackers / review / functional so you do not brick the phone.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="reveal" id="not">
+    <p class="sec-label">07 / What it is not</p>
+    <h2>Adjacent, not equivalent.</h2>
+
+    <table class="compare">
+      <thead>
+        <tr><th></th><th>NOIR</th><th>Permission manager</th><th>Tracker database</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>sees</td><td>endpoints inside this APK</td><td>declared permissions</td><td>app-level labels</td></tr>
+        <tr><td>answers</td><td>which data can reach which host</td><td>who asked for what</td><td>“this app is known to track”</td></tr>
+        <tr><td>acts</td><td>reversible app-ops, DNS tiers</td><td>opens settings</td><td>nothing</td></tr>
+        <tr><td>needs</td><td>adb, no root</td><td>nothing</td><td>nothing</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:18px">It is also not an antivirus, not a firewall, and not a cloud service. It is a static audit you run yourself.</p>
+  </section>
+
+  <section class="reveal" id="source">
+    <p class="sec-label">08 / Source</p>
+    <h2>Read it before you run it.</h2>
+    <p>MIT licensed, no accounts, no network calls of its own. The only downloads are adb and jadx, and only when you say yes.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/Verlintas/NOIR">Star on GitHub</a>
+      <a class="btn" href="https://github.com/Verlintas/NOIR/releases">All releases</a>
+      <a class="btn" href="https://twitter.com/intent/tweet?text=NOIR%20%E2%80%94%20what%20can%20your%20phone%20leak%2C%20and%20where%20does%20it%20go%3F%20adb%20only%2C%20no%20root.&amp;url=https%3A%2F%2Fverlintas.dev%2Fnoir%2F">Share on X</a>
+    </div>
+  </section>
+
+  <section class="reveal" id="contact">
+    <p class="sec-label">09 / Contact</p>
+    <h2>Talk to a human.</h2>
+    <p>Bug reports and feature requests belong on GitHub. Vulnerabilities go through a private advisory. Everything else: email.</p>
+
+    <div class="contact">
+      <a class="contact-row" href="https://github.com/Verlintas">
+        <span class="k">github</span><span class="v">@Verlintas</span><span class="d">code, releases, follow</span>
+      </a>
+      <a class="contact-row" href="https://github.com/Verlintas/NOIR/issues">
+        <span class="k">issues</span><span class="v">report a bug</span><span class="d">please attach <code>noir doctor</code></span>
+      </a>
+      <a class="contact-row" href="https://github.com/Verlintas/NOIR/security/advisories/new">
+        <span class="k">security</span><span class="v">private advisory</span><span class="d">do not open a public issue</span>
+      </a>
+      <a class="contact-row" href="https://x.com/Verlintas">
+        <span class="k">x</span><span class="v">@Verlintas</span><span class="d">updates &amp; threads</span>
+      </a>
+      <a class="contact-row" id="email-link" href="#contact">
+        <span class="k">email</span><span class="v" id="email-text">…</span><span class="d">everything else</span>
+      </a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/Verlintas/NOIR">github</a>
+      <a href="https://github.com/Verlintas/NOIR/releases">releases</a>
+      <a href="https://github.com/Verlintas/NOIR/issues">issues</a>
+      <a href="https://github.com/Verlintas/NOIR/blob/main/SECURITY.md">security</a>
+      <a href="#contact">contact</a>
+    </div>
+    <div>MIT © 2026 Verlintas · no telemetry · no accounts · built with Kotlin Multiplatform</div>
+  </div>
+</footer>
+
+</body>
+</html>

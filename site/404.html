@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>404 — NOIR</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%2308080a'/%3E%3Ctext x='32' y='46' font-size='38' font-weight='700' font-family='monospace' fill='%2322d3ee' text-anchor='middle'%3EN%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #08080a;
+    --fg: #e8e8ea;
+    --dim: #8a8a92;
+    --line: #1e1e24;
+    --cyan: #22d3ee;
+    --violet: #a78bfa;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px);
+    background-size: 100% 3px;
+  }
+  main { width: min(560px, 100%); position: relative; }
+  .code {
+    margin: 0 0 22px;
+    font-size: clamp(34px, 9vw, 64px);
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -.04em;
+    background: linear-gradient(92deg, var(--cyan), var(--violet) 72%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .label { color: var(--dim); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; margin: 0 0 12px; }
+  h1 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.02em; }
+  p { margin: 0 0 24px; color: var(--dim); }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; }
+  a {
+    display: inline-block;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 13px;
+  }
+  a:hover { border-color: var(--cyan); color: var(--cyan); }
+  a.primary { border-color: var(--cyan); color: var(--cyan); }
+  a.primary:hover { background: var(--cyan); color: #000; }
+</style>
+</head>
+<body>
+<main>
+  <p class="code">404</p>
+  <p class="label">signal lost</p>
+  <h1>The page you asked for is not here.</h1>
+  <p>Nothing was collected while you looked. Try one of these instead.</p>
+  <div class="links">
+    <a class="primary" href="/noir/">NOIR / EN</a>
+    <a href="/noir/zh/">NOIR / 中文</a>
+    <a href="https://github.com/Verlintas/NOIR">GitHub</a>
+  </div>
+</main>
+</body>
+</html>
