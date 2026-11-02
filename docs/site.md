@@ -102,6 +102,9 @@ Keep it at 1200×630; X, Slack, Discord and GitHub all crop around that ratio.
   `index.html` and `zh/index.html`.
 - The demo numbers (`501` apps, `256` flagged, `19` app-ops) are illustrative,
   not a real report. Keep the "simulated" label visible.
+- The demo mirrors `core/src/commonMain/kotlin/app/noir/core/Tui.kt`: logo,
+  DEVICE, EXPOSURE percentages, TOP FINDINGS UP/CMD columns, PLAN and the scan
+  progress line. Update `app.js` when the TUI format changes.
 
 ## Content decisions
 

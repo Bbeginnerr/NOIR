@@ -146,13 +146,18 @@
   <section class="reveal" id="demo">
     <p class="sec-label">03 / Demo</p>
     <h2>Run it here, simulated.</h2>
-    <p>Same output as <code>noir ui</code>, replayed in the browser. No device is touched and nothing leaves this page.</p>
+    <p>Same dashboard layout as <code>noir ui</code>, rebuilt from the real renderer. Press <b>replay scan</b> to watch a simulated run. No device is touched and nothing leaves this page.</p>
 
     <div class="demo">
-      <div class="demo-bar"><span>noir — simulated session</span><span>macOS · zsh</span></div>
-      <div class="demo-body" id="demo-body" aria-label="simulated terminal output"><div class="l dim fallback">JavaScript is off — run noir ui in your terminal to see this live.</div></div>
+      <div class="demo-bar">
+        <span class="demo-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="demo-title">noir — zsh</span>
+        <span class="demo-size">100×48 · simulated</span>
+        <span class="demo-pan">swipe →</span>
+      </div>
+      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="simulated terminal output"><div class="tui-fallback">JavaScript is off — run <code>noir ui</code> in your terminal to see this live.</div></div>
       <div class="demo-actions">
-        <button id="demo-run" type="button">run scan</button>
+        <button id="demo-run" type="button">replay scan</button>
         <button id="demo-reset" type="button">reset</button>
         <span class="demo-note">simulated output · no device involved</span>
       </div>

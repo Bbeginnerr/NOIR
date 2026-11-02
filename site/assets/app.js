@@ -135,10 +135,28 @@
   var demoReset = document.getElementById("demo-reset");
   if (!demoBody || !demoRun) return;
 
-  var CATEGORIES = [
-    ["系统", 119], ["遥测/统计", 32], ["广告", 21], ["工具", 11],
-    ["安全/杀毒", 8], ["社交", 8], ["游戏", 7], ["购物", 6], ["金融", 5]
+  var LOGO = [
+    "███╗   ██╗ ██████╗ ██╗██████╗ ",
+    "████╗  ██║██╔═══██╗██║██╔══██╗",
+    "██╔██╗ ██║██║   ██║██║██████╔╝",
+    "██║╚██╗██║██║   ██║██║██╔══██╗",
+    "██║ ╚████║╚██████╔╝██║██║  ██║",
+    "╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝"
   ];
+
+  var EXPOSURE = [
+    ["系统", 119, 46],
+    ["遥测/统计", 32, 12],
+    ["广告", 21, 8],
+    ["工具", 11, 4],
+    ["安全/杀毒", 8, 3],
+    ["社交", 8, 3],
+    ["游戏", 7, 2],
+    ["购物", 6, 2],
+    ["金融", 5, 1]
+  ];
+  var UNCATEGORIZED = 25;
+
   var FINDINGS = [
     [36, "安全/杀毒", "com.miui.securitycenter", 12, 3],
     [34, "安全/杀毒", "com.bsp.catchlog", 1, 0],
@@ -147,112 +165,168 @@
     [34, "遥测/统计", "com.xiaomi.aiasst.service", 6, 0],
     [32, "遥测/统计", "com.google.android.gms", 4, 0],
     [31, "系统", "com.android.dynsystem", 0, 0],
-    [31, "系统", "com.miui.powerkeeper", 0, 0]
+    [31, "系统", "com.miui.powerkeeper", 0, 0],
+    [31, "系统", "com.miui.qr", 0, 0],
+    [31, "系统", "com.miui.contentcatcher", 0, 0]
   ];
 
-  function line(html, className) {
-    var div = document.createElement("div");
-    div.className = "l" + (className ? " " + className : "");
-    div.innerHTML = html;
-    demoBody.appendChild(div);
-    return div;
+  var SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+  var scanSteps = 256;
+
+  function repeat(text, count) {
+    var out = "";
+    for (var i = 0; i < count; i++) out += text;
+    return out;
   }
 
-  function spacer() {
-    var div = document.createElement("div");
-    div.className = "spacer";
-    demoBody.appendChild(div);
+  function section(label) {
+    return '<div class="tui-sec"><span class="tui-sec-label">' + label + "</span></div>";
   }
 
-  function progressBar() {
-    var div = document.createElement("div");
-    div.className = "l";
-    div.innerHTML = '<span class="dim">scan</span>     ' +
-      '<span class="track"><i></i></span> <span class="dim">0/501</span>';
-    demoBody.appendChild(div);
-    return {
-      fill: div.querySelector("i"),
-      label: div.querySelector(".dim:last-child")
-    };
+  function keyValue(key, value) {
+    return '<div class="tui-kv"><span class="k">' + key + '</span><span class="v">' + value + "</span></div>";
   }
 
-  function exposureRow(label, value, max) {
-    var width = Math.max(2, Math.round(value * 200 / max));
-    return '<span class="lbl dim">' + label + "</span>" +
-      '<span class="mini" style="width:' + width + 'px"></span> ' +
-      '<span class="dim">' + String(value).padStart(3, " ") + "</span>";
+  function exposureRow(label, count, pct) {
+    var filled = Math.max(1, Math.round(count * 30 / EXPOSURE[0][1]));
+    var bar = '<span class="tui-bar-on">' + repeat("█", filled) + "</span>" +
+      '<span class="tui-bar-off">' + repeat("░", 30 - filled) + "</span>";
+    return '<div class="tui-exp"><span class="cat">' + label + "</span>" +
+      '<span class="tui-bar">' + bar + "</span>" +
+      '<span class="count">' + count + "</span>" +
+      '<span class="pct">' + pct + "%</span></div>";
+  }
+
+  function findingRow(index, score, category, pkg, up, cmd) {
+    var level = score >= 40 ? "bad" : score >= 25 ? "warn" : "good";
+    return '<div class="tui-find">' +
+      '<span class="num">' + index + "</span>" +
+      '<span class="score ' + level + '">' + score + "</span>" +
+      '<span class="cat">' + category + "</span>" +
+      '<span class="pkg">' + pkg + "</span>" +
+      '<span class="up">' + up + "</span>" +
+      '<span class="cmd">' + cmd + "</span></div>";
+  }
+
+  function dashboardHTML() {
+    var logo = LOGO.map(function (row) {
+      return '<span class="tui-logo-line">' + row + "</span>";
+    }).join("");
+
+    var findings = FINDINGS.map(function (row, index) {
+      return findingRow(index + 1, row[0], row[1], row[2], row[3], row[4]);
+    }).join("");
+
+    var exposure = EXPOSURE.map(function (row) {
+      return exposureRow(row[0], row[1], row[2]);
+    }).join("");
+
+    var uncategorised = '<div class="tui-exp uncat"><span class="cat">未分类</span>' +
+      '<span class="tui-dots">' + repeat("· ", 13) + "</span>" +
+      '<span class="count">' + UNCATEGORIZED + "</span><span class=\"pct\"></span></div>";
+
+    return '<div class="tui">' +
+      '<div class="tui-brand"><div class="tui-logo" aria-hidden="true">' + logo + "</div>" +
+      '<div class="tui-tags"><b>android leak audit</b><span>monospace edition</span>' +
+      '<span class="blank"></span><span>Mac OS X aarch64</span></div></div>' +
+
+      section("DEVICE") +
+      keyValue("model", "2509FPN0BC") +
+      keyValue("device", "178b0d2f  ·  popsicle") +
+      keyValue("android", "16  ·  501 installed  ·  <b>256</b> flagged") +
+
+      section("EXPOSURE") + exposure + uncategorised +
+
+      section("TOP FINDINGS") +
+      '<div class="tui-find head"><span class="num">#</span><span class="score">SCORE</span>' +
+      '<span class="cat">CATEGORY</span><span class="pkg">PACKAGE</span>' +
+      '<span class="up">UP</span><span class="cmd">CMD</span></div>' + findings +
+
+      section("PLAN") +
+      '<div class="tui-plan">' +
+      '<div class="tui-planrow"><span class="k">risk</span><span class="tui-risk">' +
+      '<span><span class="red">●</span> HIGH 20</span>' +
+      '<span><span class="amber">●</span> MED 51</span>' +
+      '<span><span class="green">●</span> LOW 31</span></span></div>' +
+      '<div class="tui-planrow"><span class="k">actions</span><span class="tui-actions">' +
+      '<span>人工复核 52</span><span>DNS 拦截 31</span><span>禁止录屏 12</span>' +
+      '<span class="more">+1 more</span></span></div>' +
+      '<div class="tui-planrow"><span class="k">auto-safe</span><span>' +
+      '<span class="safe-n">19</span> <span class="dim">reversible appops, rollback written next to the report</span>' +
+      "</span></div></div>" +
+      "</div>" +
+
+      '<div class="tui-after">' +
+      '<div><span class="report-k">report</span>&nbsp;&nbsp;/Users/verlintas/NOIR/noir-out</div>' +
+      '<div class="tui-prompt"><span class="ok">$</span> <span class="tui-caret"></span></div>' +
+      "</div>";
   }
 
   var running = false;
   var generation = 0;
+
+  function runLine(parent, html) {
+    var div = document.createElement("div");
+    div.innerHTML = html;
+    parent.appendChild(div);
+    return div;
+  }
 
   async function runDemo() {
     if (running) return;
     running = true;
     var mine = ++generation;
     demoRun.disabled = true;
+    demoBody.scrollLeft = 0;
+    demoBody.scrollTop = 0;
     demoBody.innerHTML = "";
 
-    line('<span class="ok">$</span> noir ui');
-    await sleep(220);
+    var log = document.createElement("div");
+    log.className = "tui-run";
+    demoBody.appendChild(log);
 
-    line('<span class="dim">device</span>   <span class="v">2509FPN0BC</span> · android 16');
-    await sleep(160);
+    runLine(log, '<span class="prompt">$</span> noir ui');
+    await sleep(reduced ? 0 : 240);
+    if (mine !== generation) return;
 
-    var bar = progressBar();
-    var frames = reduced ? 1 : 55;
+    runLine(log, '[*] host: Mac OS X aarch64');
+    runLine(log, '[*] device: 178b0d2f (2509FPN0BC)');
+    await sleep(reduced ? 0 : 100);
+    runLine(log, '[*] packages: 501');
+    await sleep(reduced ? 0 : 100);
+    runLine(log, '[*] reading dumpsys package ... 312 KiB');
+    await sleep(reduced ? 0 : 130);
+    runLine(log, '[*] parsed: 498');
+    runLine(log, '[*] candidates (internet + sensitive): 256');
+    await sleep(reduced ? 0 : 120);
+    runLine(log, '[*] analysing 256 new/changed APKs (cache hits: 0)');
+    await sleep(reduced ? 0 : 160);
+    if (mine !== generation) return;
+
+    var progress = runLine(log, "");
+    var frames = reduced ? 1 : 56;
     for (var i = 0; i <= frames; i++) {
       if (mine !== generation) return;
-      var progress = i / frames;
-      bar.fill.style.width = (progress * 100).toFixed(1) + "%";
-      bar.label.textContent = String(Math.round(progress * 501)).padStart(3, " ") + "/501";
-      await sleep(36);
+      var ratio = i / frames;
+      var done = Math.round(ratio * scanSteps);
+      var pct = Math.floor(done * 100 / scanSteps);
+      var filled = Math.round(ratio * 26);
+      var eta = Math.max(0, Math.ceil((1 - ratio) * 4));
+      progress.innerHTML = "  " +
+        '<span class="pbar-on">' + repeat("█", filled) + "</span>" +
+        '<span class="pbar-off">' + repeat("░", 26 - filled) + "</span> " +
+        pct + "%  " + done + "/" + scanSteps +
+        "  ·  ETA " + Math.floor(eta / 60) + ":" + String(eta % 60).padStart(2, "0") +
+        '  <span class="spin">' + SPINNER[i % 10] + "</span>";
+      await sleep(reduced ? 0 : 34);
     }
-    await sleep(180);
+
+    await sleep(reduced ? 0 : 260);
     if (mine !== generation) return;
 
-    line('<span class="dim">flagged</span>  <span class="v">256</span> apps · 31 tracker domains');
-    spacer();
-    await sleep(180);
-
-    line("EXPOSURE", "head");
-    var max = 119;
-    for (var c = 0; c < CATEGORIES.length; c++) {
-      if (mine !== generation) return;
-      line(exposureRow(CATEGORIES[c][0], CATEGORIES[c][1], max));
-      await sleep(45);
-    }
-    spacer();
-    await sleep(160);
-    if (mine !== generation) return;
-
-    line("TOP FINDINGS", "head");
-    var header = '<span class="dim">  #  SCORE  CATEGORY    PACKAGE</span>';
-    line(header);
-    for (var f = 0; f < FINDINGS.length; f++) {
-      if (mine !== generation) return;
-      var row = FINDINGS[f];
-      line(
-        '<span class="dim">' + String(f + 1).padStart(3, " ") + "</span>  " +
-        '<span class="warn">' + String(row[0]).padStart(5, " ") + "</span>  " +
-        '<span class="dim">' + row[1].padEnd(10, " ") + "</span>  " +
-        '<span class="pkg">' + row[2] + "</span>"
-      );
-      await sleep(38);
-    }
-    spacer();
-    await sleep(160);
-    if (mine !== generation) return;
-
-    line("PLAN", "head");
-    line('<span class="dim">risk</span>      <span class="bad">● HIGH 20</span>   ' +
-      '<span class="warn">● MED 51</span>   <span class="ok">● LOW 31</span>');
-    line('<span class="dim">actions</span>   DNS 拦截 31   禁止录屏 12   人工复核 52   <span class="dim">+1</span>');
-    line('<span class="dim">auto-safe</span> <span class="ok">19</span> reversible app-ops · rollback.txt');
-    spacer();
-    await sleep(160);
-    line('<span class="dim">done · 4.2s · simulated output, no device involved</span>');
-
+    demoBody.innerHTML = dashboardHTML();
+    demoBody.scrollLeft = 0;
+    demoBody.scrollTop = 0;
     running = false;
     demoRun.disabled = false;
   }
@@ -261,25 +335,12 @@
     generation++;
     running = false;
     demoRun.disabled = false;
-    demoBody.innerHTML = '<div class="l dim">press “run scan” to replay · this is a simulation, not a real device</div>';
+    demoBody.scrollLeft = 0;
+    demoBody.scrollTop = 0;
+    demoBody.innerHTML = dashboardHTML();
   }
 
   demoRun.addEventListener("click", runDemo);
   if (demoReset) demoReset.addEventListener("click", resetDemo);
   resetDemo();
-
-  /* auto-run once when the demo scrolls into view */
-  var autoStarted = false;
-  if ("IntersectionObserver" in window) {
-    var demoObserver = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting && !autoStarted) {
-          autoStarted = true;
-          demoObserver.disconnect();
-          setTimeout(runDemo, reduced ? 0 : 350);
-        }
-      });
-    }, { threshold: 0.35 });
-    demoObserver.observe(demoBody);
-  }
 })();
