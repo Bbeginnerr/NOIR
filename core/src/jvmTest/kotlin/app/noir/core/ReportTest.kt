@@ -12,26 +12,6 @@ import kotlin.test.assertTrue
 class ReportTest {
 
     @Test
-    fun `domains exports only upload hosts and deduplicates them`() {
-        val entry = AppEntry(
-            pkg = "com.example",
-            uid = "1",
-            isSystem = false,
-            debuggable = false,
-            installer = null,
-            permissions = listOf("INTERNET"),
-            endpoints = listOf(
-                "https://a.example.com/upload",
-                "https://a.example.com/anything",
-                "https://b.example.com/collect/data",
-                "https://c.example.com/config"
-            ),
-            score = 5
-        )
-        assertEquals(listOf("a.example.com", "b.example.com"), Report.domains(listOf(entry)).lines())
-    }
-
-    @Test
     fun `json escapes quotes and control characters`() {
         val entry = AppEntry(
             pkg = "com.\"weird\"",

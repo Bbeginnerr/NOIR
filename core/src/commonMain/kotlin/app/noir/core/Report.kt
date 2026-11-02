@@ -128,18 +128,6 @@ object Report {
         return sb.toString()
     }
 
-    /** Domains only, deduplicated — convenient for Pi-hole / AdGuard / DNS blocklists. */
-    fun domains(apps: List<AppEntry>): String {
-        val hosts = LinkedHashSet<String>()
-        apps.forEach { a ->
-            a.uploadEndpoints.forEach { url ->
-                val host = url.substringAfter("://").substringBefore('/').substringBefore(':').lowercase()
-                if (host.isNotBlank() && !host.count { it == '.' }.let { it < 1 }) hosts.add(host)
-            }
-        }
-        return hosts.joinToString("\n")
-    }
-
     private fun leaksJson(app: AppEntry): String {
         if (app.leaks.isEmpty()) return "{}"
         return app.leaks.entries.joinToString(prefix = "{", postfix = "}") { (data, hosts) ->

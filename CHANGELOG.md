@@ -5,6 +5,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-11-02
+
+### Fixed
+
+- **vendor attribution** — the package name is now authoritative, and host
+  fallback scores vendors by suffix instead of "first substring wins".
+  Infrastructure hosts (`schemas.android.com`, `github.com`, …) are ignored, and
+  OPPO / vivo / Huawei / Samsung / Meituan / Pinduoduo / JD / Bilibili / Kuaishou /
+  Weibo were added. Fixes hundreds of apps being labelled Google. Reported in [#12].
+- **domain export** — split into `domains-trackers.txt` (safe to block),
+  `domains-other.txt` (review) and `domains-functional.txt` (push/login/update/
+  payment/store/cloud; do not block). Bare IPs, `localhost` and test/staging
+  hosts are dropped; `domains.txt` now contains only the tracker tier.
+  Reported in [#11].
+
+[#11]: https://github.com/Verlintas/NOIR/issues/11
+[#12]: https://github.com/Verlintas/NOIR/issues/12
+
 ## [0.2.4] — 2026-11-01
 
 ### Changed

@@ -258,10 +258,14 @@ noir deepscan --apply --purge  # 再逐个确认卸载高风险用户应用
 
 ```
 noir-out/
-├── report.json      # 结构化结果（应用、权限、端点、建议）
-├── report.md        # 人类可读报告
-├── domains.txt      # 去重后的上报域名，可直接导入 Pi-hole / AdGuard
-└── rollback.txt     # 本次动作的回滚命令
+├── report.json               # 结构化结果（应用、权限、端点、建议）
+├── report.md                 # 人类可读报告
+├── domains-trackers.txt      # 统计/广告/崩溃上报，可整份导入
+├── domains-other.txt         # 用途不明，导入前逐条判断
+├── domains-functional.txt    # 推送/登录/更新/支付/商店/云同步，禁止拦截
+├── domains.txt               # 等于 trackers（兼容旧脚本）
+├── plan.txt                  # 本次可执行的 appops
+└── rollback.txt              # 回滚命令
 ```
 
 ## 隐私
@@ -317,8 +321,14 @@ adb ──▶ unzip/strings ──▶ endpoints ──────┘        │
 app-ops 或 DNS 层拦截。
 
 **DNS 拦截为什么只导出不执行？**
-跨平台改 DNS 很容易把设备网断掉（我们在开发中踩过），所以只产出 `domains.txt`，
-由你导入 Pi-hole / AdGuard / 路由器。
+跨平台改 DNS 很容易把设备网断掉（我们在开发中踩过），所以只导出清单：
+
+- `domains-trackers.txt` —— 统计/广告/崩溃上报，可以整份导入
+- `domains-other.txt` —— 用途不明，导入前逐条判断
+- `domains-functional.txt` —— 推送、登录、更新、支付、应用商店、云同步，**拦了会掉功能**
+- `domains.txt` —— 现在只包含 trackers，兼容旧脚本
+
+IP、`localhost` 和带 `test`/`staging` 的域名会被自动剔除。
 
 **支持 iOS 吗？**
 不支持。`core` 是按 Kotlin Multiplatform 组织的，但审计逻辑依赖 Android 的

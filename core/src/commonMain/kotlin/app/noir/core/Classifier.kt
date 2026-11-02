@@ -27,11 +27,16 @@ enum class Category(val label: String) {
 }
 
 /**
- * Cheap, explainable classification: package name + endpoint domains.
+ * Cheap, explainable classification.
  *
- * Deliberately conservative: keyword matching uses token boundaries so that
- * `statementservice` is not mistaken for telemetry. System apps fall back to
- * SYSTEM rather than OTHER, which keeps the exposure chart readable.
+ * Vendor attribution is resolved in two passes:
+ *  1. the package name, which is authoritative (`com.tencent.mm` is Tencent no
+ *     matter which SDK domains it embeds);
+ *  2. otherwise, upload hosts scored by how many of them match a vendor suffix,
+ *     with infrastructure hosts (`schemas.android.com`, `github.com`, …) ignored.
+ *
+ * This avoids the classic failure where every APK contains
+ * `schemas.android.com/aapt` and ends up labelled Google.
  */
 object Classifier {
 
@@ -40,6 +45,75 @@ object Classifier {
     )
     private val ADS = Regex(
         "(^|[./_-])(ads?|advert|advertising|doubleclick|pangle|sigmob)([./_-]|$)"
+    )
+
+    private data class VendorRule(val vendor: String, val prefixes: List<String>)
+
+    /** Ordered: the first matching package prefix wins. */
+    private val PACKAGE_RULES: List<VendorRule> = listOf(
+        VendorRule("OPPO", listOf("com.heytap.", "com.oplus.", "com.coloros.", "com.oppo.", "com.nearme.")),
+        VendorRule("vivo", listOf("com.vivo.", "com.bbk.")),
+        VendorRule("Huawei", listOf("com.huawei.", "com.hihonor.")),
+        VendorRule("Samsung", listOf("com.samsung.", "com.sec.android.")),
+        VendorRule("Tencent", listOf("com.tencent.")),
+        VendorRule("ByteDance", listOf("com.ss.android.", "com.bytedance.")),
+        VendorRule(
+            "Alibaba",
+            listOf(
+                "com.taobao.", "com.tmall.", "com.alibaba.", "com.alipay.",
+                "com.eg.android.alipaygphone", "com.ant."
+            )
+        ),
+        VendorRule("Baidu", listOf("com.baidu.")),
+        VendorRule("Xiaomi", listOf("com.xiaomi.", "com.miui.", "com.mi.", "miui.")),
+        VendorRule(
+            "Google",
+            listOf(
+                "com.google.", "com.android.vending", "com.android.chrome",
+                "com.android.gms", "com.android.gsf"
+            )
+        ),
+        VendorRule("Meituan", listOf("com.sankuai.", "com.meituan.", "com.dianping.")),
+        VendorRule("Pinduoduo", listOf("com.xunmeng.pinduoduo", "com.xunmeng.")),
+        VendorRule("JD", listOf("com.jingdong.")),
+        VendorRule("Bilibili", listOf("tv.danmaku.bili", "com.bilibili.")),
+        VendorRule("Kuaishou", listOf("com.smile.gifmaker", "com.kuaishou.")),
+        VendorRule("Weibo", listOf("com.sina.weibo")),
+        VendorRule("Sogou", listOf("com.sohu.inputmethod.sogou", "com.sogou.")),
+        VendorRule("iFlytek", listOf("com.iflytek.")),
+        VendorRule("NetEase", listOf("com.netease.", "com.online.163.")),
+        VendorRule("Mihoyo", listOf("com.mihoyo.")),
+        VendorRule("UnionPay", listOf("com.unionpay.")),
+        VendorRule("Umeng", listOf("com.umeng."))
+    )
+
+    private data class VendorDomain(val vendor: String, val domains: List<String>)
+
+    private val VENDOR_DOMAINS: List<VendorDomain> = listOf(
+        VendorDomain("Xiaomi", listOf("xiaomi.com", "miui.com", "mi.com", "xiaomi.net")),
+        VendorDomain("OPPO", listOf("heytap.com", "heytapmobi.com", "oppomobile.com", "coloros.com", "oplus.com", "nearme.com", "wanyol.com")),
+        VendorDomain("vivo", listOf("vivo.com.cn", "vivo.com", "iqoo.com")),
+        VendorDomain("Huawei", listOf("huawei.com", "hicloud.com", "hihonor.com")),
+        VendorDomain("Samsung", listOf("samsung.com", "samsungapps.com")),
+        VendorDomain("Tencent", listOf("qq.com", "tencent.com", "tencent-cloud.net", "weixin.qq.com")),
+        VendorDomain("Alibaba", listOf("alibaba.com", "aliyun.com", "taobao.com", "tmall.com", "amap.com", "ucweb.com", "uc.cn", "alipay.com")),
+        VendorDomain("Baidu", listOf("baidu.com", "bdstatic.com", "bcebos.com")),
+        VendorDomain("ByteDance", listOf("bytedance.com", "bytcdn.com", "zijieapi.com", "snssdk.com", "toutiao.com", "tiktokv.com", "pangle.io", "oceanengine.com")),
+        VendorDomain("Google", listOf("google.com", "googleapis.com", "gstatic.com", "youtube.com", "android.com")),
+        VendorDomain("Meta", listOf("facebook.com", "facebook.net", "instagram.com", "fb.com", "whatsapp.com")),
+        VendorDomain("Meituan", listOf("meituan.com", "dianping.com", "sankuai.com")),
+        VendorDomain("Pinduoduo", listOf("pinduoduo.com", "yangkeduo.com")),
+        VendorDomain("JD", listOf("jd.com", "360buy.com")),
+        VendorDomain("Bilibili", listOf("bilibili.com", "hdslb.com")),
+        VendorDomain("Kuaishou", listOf("kuaishou.com", "gifshow.com")),
+        VendorDomain("Weibo", listOf("weibo.com", "weibo.cn", "sina.com.cn")),
+        VendorDomain("Sogou", listOf("sogou.com", "sogoucdn.com")),
+        VendorDomain("iFlytek", listOf("iflytek.com", "voicecloud.cn")),
+        VendorDomain("NetEase", listOf("netease.com", "163.com", "126.net")),
+        VendorDomain("Mihoyo", listOf("mihoyo.com")),
+        VendorDomain("UnionPay", listOf("unionpay.com", "95516.com")),
+        VendorDomain("Umeng", listOf("umeng.com", "umengcloud.com")),
+        VendorDomain("Firebase", listOf("firebase.com", "firebaseio.com", "crashlytics.com"))
     )
 
     private val KNOWN: Map<String, Category> = mapOf(
@@ -72,28 +146,26 @@ object Classifier {
         "com.google.android.youtube" to Category.MEDIA
     )
 
-    private val VENDORS: List<Pair<String, List<String>>> = listOf(
-        "Xiaomi" to listOf("xiaomi", "miui", "mi.com", "mijia", "miui.com"),
-        "Google" to listOf("google", "gstatic", "android.com", "doubleclick"),
-        "Tencent" to listOf("qq.com", "tencent", "weixin", "wechat"),
-        "Alibaba" to listOf("alibaba", "aliyun", "taobao", "tmall", "amap.com", "ucweb"),
-        "Baidu" to listOf("baidu", "bdstatic"),
-        "ByteDance" to listOf("bytedance", "zijieapi", "toutiao", "pangle"),
-        "Meta" to listOf("facebook", "instagram", "fb.com"),
-        "Sogou" to listOf("sogou"),
-        "iFlytek" to listOf("iflytek", "voicecloud"),
-        "UnionPay" to listOf("unionpay", "95516"),
-        "China Unicom" to listOf("wo.com.cn", "10010"),
-        "Amazon" to listOf("amazonaws", "amazon-adsystem"),
-        "Umeng" to listOf("umeng"),
-        "Firebase" to listOf("firebase", "crashlytics"),
-        "Mihoyo" to listOf("mihoyo"),
-        "NetEase" to listOf("netease", "163.com")
-    )
-
     fun vendor(pkg: String, endpoints: List<String>): String? {
-        val haystack = (pkg + " " + endpoints.joinToString(" ")).lowercase()
-        return VENDORS.firstOrNull { (_, keys) -> keys.any { haystack.contains(it) } }?.first
+        val name = pkg.lowercase()
+        PACKAGE_RULES.firstOrNull { rule -> rule.prefixes.any { name.startsWith(it) } }
+            ?.let { return it.vendor }
+
+        val hosts = endpoints.mapNotNull { Exposure.hostOf(it) }
+            .filterNot { Domains.isIgnored(it) }
+
+        if (hosts.isEmpty()) return null
+
+        val scores = HashMap<String, Int>()
+        VENDOR_DOMAINS.forEach { vendor ->
+            hosts.forEach { host ->
+                if (vendor.domains.any { domain -> host == domain || host.endsWith(".$domain") }) {
+                    scores[vendor.vendor] = (scores[vendor.vendor] ?: 0) + 1
+                }
+            }
+        }
+
+        return scores.maxByOrNull { it.value }?.key
     }
 
     fun category(

@@ -11,6 +11,7 @@ import app.noir.core.AppEntry
 import app.noir.core.Cache
 import app.noir.core.Category
 import app.noir.core.Classifier
+import app.noir.core.Domains
 import app.noir.core.Device
 import app.noir.core.Recommendation
 import app.noir.core.Report
@@ -590,9 +591,46 @@ private fun performScan(args: Args): ScanResult {
 private fun writeReports(result: ScanResult, recommendations: List<Recommendation>) {
     File(result.outDir, "report.json").writeText(Report.json(result.device, result.apps, recommendations))
     File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations))
-    File(result.outDir, "domains.txt").writeText(Report.domains(result.apps))
+    writeDomainFiles(result.outDir, result.apps)
     File(result.outDir, "plan.txt").writeText(plannedCommands(recommendations).joinToString("\n", postfix = "\n"))
     File(result.outDir, "rollback.txt").writeText(rollbackLines(recommendations).joinToString("\n", postfix = "\n"))
+}
+
+private fun writeDomainFiles(outDir: File, apps: List<AppEntry>) {
+    val export = Domains.export(apps)
+    val date = java.time.LocalDate.now().toString()
+
+    fun render(title: String, note: String, hosts: List<String>): String =
+        buildString {
+            append("# NOIR — ").append(title).append('\n')
+            append("# generated ").append(date).append(" · ").append(hosts.size).append(" hosts\n")
+            append("# ").append(note).append('\n')
+            append("#\n")
+            hosts.forEach { append(it).append('\n') }
+        }
+
+    val trackers = render(
+        "tracker domains",
+        "analytics / ads / crash reporting. Safe to block: these do not carry user-facing features.",
+        export.trackers
+    )
+    val review = render(
+        "unclassified domains",
+        "review before blocking: these may be app APIs, maps, security updates or third-party SDKs.",
+        export.review
+    )
+    val functional = render(
+        "functional domains",
+        "DO NOT BLOCK: push, login, updates, payments, app stores, cloud sync and connectivity checks.",
+        export.functional
+    )
+
+    File(outDir, "domains-trackers.txt").writeText(trackers)
+    File(outDir, "domains-other.txt").writeText(review)
+    File(outDir, "domains-functional.txt").writeText(functional)
+
+    // Backwards-compatible name, now containing only the safe tier.
+    File(outDir, "domains.txt").writeText(trackers)
 }
 
 private fun plannedCommands(recommendations: List<Recommendation>): List<String> =

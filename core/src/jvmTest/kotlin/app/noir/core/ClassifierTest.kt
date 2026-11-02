@@ -7,6 +7,7 @@ package app.noir.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ClassifierTest {
@@ -43,6 +44,42 @@ class ClassifierTest {
     fun `unknown system packages fall back to system instead of other`() {
         assertEquals(Category.SYSTEM, Classifier.category("com.unknown.system", emptyList(), emptyList(), isSystem = true))
         assertEquals(Category.OTHER, Classifier.category("com.unknown.user", emptyList(), emptyList(), isSystem = false))
+    }
+
+    @Test
+    fun `vendor prefers the package name over embedded sdk domains`() {
+        assertEquals("Tencent", Classifier.vendor("com.tencent.mm", listOf("https://schemas.android.com/aapt", "https://google.com/x")))
+        assertEquals("ByteDance", Classifier.vendor("com.ss.android.ugc.aweme", listOf("https://lf-3.ecombdstatic.com/x")))
+        assertEquals("Alibaba", Classifier.vendor("com.taobao.taobao", listOf("https://register.xmpush.xiaomi.com/x")))
+        assertEquals("Alibaba", Classifier.vendor("com.eg.android.AlipayGphone", listOf("http://schemas.android.com/apk/res/android")))
+        assertEquals("Pinduoduo", Classifier.vendor("com.xunmeng.pinduoduo", listOf("http://schemas.android.com/apk/res/android")))
+        assertEquals("Meituan", Classifier.vendor("com.sankuai.meituan", listOf("https://maps.google.com/x")))
+        assertEquals("OPPO", Classifier.vendor("com.heytap.mcs", listOf("https://connect.rom.miui.com/generate_204")))
+    }
+
+    @Test
+    fun `vendor ignores infrastructure hosts`() {
+        assertNull(
+            Classifier.vendor(
+                "com.example.app",
+                listOf("http://schemas.android.com/apk/res/android", "https://github.com/google/gson")
+            )
+        )
+    }
+
+    @Test
+    fun `vendor falls back to domain suffix scoring`() {
+        assertEquals(
+            "Baidu",
+            Classifier.vendor("com.example.map", listOf("https://api.map.baidu.com/x", "https://bdstatic.com/y"))
+        )
+        assertEquals(
+            "Tencent",
+            Classifier.vendor(
+                "com.example.chat",
+                listOf("https://a.qq.com/x", "https://b.tencent.com/y", "https://c.example.org/z")
+            )
+        )
     }
 
     @Test
