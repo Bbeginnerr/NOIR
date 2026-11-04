@@ -22,4 +22,27 @@ dependencies {
 application {
     mainClass.set("app.noir.cli.MainKt")
     applicationName = "noir"
+    applicationDefaultJvmArgs = listOf(
+        "-Dfile.encoding=UTF-8",
+        "-Dsun.stdout.encoding=UTF-8",
+        "-Dsun.stderr.encoding=UTF-8",
+        "-Dstdout.encoding=UTF-8",
+        "-Dstderr.encoding=UTF-8"
+    )
+}
+
+tasks.named<CreateStartScripts>("startScripts") {
+    doLast {
+        val batFile = windowsScript
+        if (batFile.exists()) {
+            val text = batFile.readText(Charsets.UTF_8)
+            val marker = "@if \"%DEBUG%\"==\"\" @echo off"
+            if (text.contains(marker)) {
+                batFile.writeText(
+                    text.replace(marker, marker + "\r\nchcp 65001 >nul"),
+                    Charsets.UTF_8
+                )
+            }
+        }
+    }
 }

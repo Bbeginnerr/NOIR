@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   current user, host and tool version.
 - **rollback accuracy** — when an AppOp change succeeds, the previous mode is
   queried and written to `rollback.txt` instead of always assuming `default`.
+- **Windows launcher** — the generated `noir.bat` switches the console to
+  UTF-8 and passes UTF-8 JVM encodings, so box-drawing and CJK output render
+  correctly from `installDist`.
 
 ## [0.2.5] — 2026-11-02
 
