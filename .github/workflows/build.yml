@@ -30,7 +30,7 @@ jobs:
 
       - name: Test
         shell: bash
-        run: ./gradlew :core:jvmTest --console=plain
+        run: ./gradlew :core:jvmTest :cli:test --console=plain
 
       - name: Smoke test (no device attached)
         shell: bash
