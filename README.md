@@ -270,7 +270,8 @@ noir-out/
 ├── domains-functional.txt    # 推送/登录/更新/支付/商店/云同步，禁止拦截
 ├── domains.txt               # 等于 trackers（兼容旧脚本）
 ├── plan.txt                  # 本次可执行的 appops
-└── rollback.txt              # 回滚命令
+├── applied.txt               # 实际执行的命令、退出码、完整 stdout/stderr
+└── rollback.txt              # 回滚命令（成功后写入修改前的 AppOps 模式）
 ```
 
 ## 隐私
@@ -318,7 +319,8 @@ adb ──▶ unzip/strings ──▶ endpoints ──────┘        │
 不需要。全部通过 `adb` 的 shell 权限完成；卸载只是 `--user 0` 级别，APK 仍在系统分区。
 
 **会改坏手机吗？**
-默认完全只读。`--apply` 只改 app-ops，每条都能用 `default` 还原，`rollback.txt` 会写出来。
+默认完全只读。`--apply` 只改 app-ops；执行前会查询原模式，成功执行的动作会写入
+`rollback.txt`，按记录恢复。完整 stdout/stderr 和退出码写入 `applied.txt`。
 `noir block` 的卸载也会先打印 `pm install-existing` 的恢复命令。
 
 **为什么有些应用只给"人工复核"？**

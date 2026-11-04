@@ -16,6 +16,7 @@ tasks.jar {
 
 dependencies {
     implementation(project(":core"))
+    testImplementation(kotlin("test-junit"))
 }
 
 application {

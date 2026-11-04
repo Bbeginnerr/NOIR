@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **AppOps diagnostics** — `applied.txt` now keeps each command's full adb
+  stdout/stderr, exit code and timeout state; failures are summarized in the
+  terminal. Reports now include Android release/SDK, build id, fingerprint,
+  current user, host and tool version.
+- **rollback accuracy** — when an AppOp change succeeds, the previous mode is
+  queried and written to `rollback.txt` instead of always assuming `default`.
+
 ## [0.2.5] — 2026-11-02
 
 ### Fixed

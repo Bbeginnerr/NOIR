@@ -8,6 +8,18 @@ data class Device(
     val product: String = ""
 )
 
+/** Environment details that make a report reproducible. */
+data class ReportMeta(
+    val tool: String = "",
+    val host: String = "",
+    val android: String = "",
+    val sdk: String = "",
+    val build: String = "",
+    val fingerprint: String = "",
+    val user: String = "",
+    val generatedAt: String = ""
+)
+
 /** One installed application, reduced to what matters for a leak audit. */
 data class AppEntry(
     val pkg: String,

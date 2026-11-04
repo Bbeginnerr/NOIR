@@ -15,6 +15,7 @@ import app.noir.core.Domains
 import app.noir.core.Device
 import app.noir.core.Recommendation
 import app.noir.core.Report
+import app.noir.core.ReportMeta
 import app.noir.core.Rules
 import app.noir.core.Tui
 import app.noir.core.adb.Adb
@@ -29,6 +30,7 @@ import app.noir.core.jadx.Jadx
 import app.noir.core.platform.Platform
 import app.noir.core.platform.Setup
 import java.io.File
+import java.time.OffsetDateTime
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.system.exitProcess
@@ -188,7 +190,7 @@ private fun guided() {
     println()
     print(renderDashboard(args, result, recommendations))
 
-    val planned = plannedCommands(recommendations)
+    val planned = plannedActions(recommendations)
     println()
     println("  可以安全执行 ${planned.size} 条（appops，可回滚）")
     if (planned.isEmpty()) {
@@ -254,13 +256,14 @@ private fun cmdDevices(raw: List<String>) {
     }
 }
 
-private data class ScanResult(
+internal data class ScanResult(
     val device: Device,
     val apps: List<AppEntry>,
     val outDir: File,
     val android: String,
     val installed: Int,
-    val paths: Map<String, String>
+    val paths: Map<String, String>,
+    val meta: ReportMeta
 )
 
 private fun cmdScan(raw: List<String>) {
@@ -296,10 +299,10 @@ private fun cmdAuto(raw: List<String>) {
         println("  %-5s %-16s %-46s %s".format(r.risk, r.action.label, r.pkg, r.reason))
     }
 
-    val planned = plannedCommands(recommendations)
+    val planned = plannedActions(recommendations)
     println()
     println("== 将执行（${planned.size} 条，全部可回滚）==")
-    planned.forEach { println("  $it") }
+    planned.forEach { println("  ${it.setCommand(result.meta.user)}") }
     println()
     println(Tui.clip("[+] ${result.outDir.absolutePath}"))
 
@@ -537,6 +540,7 @@ private fun performScan(args: Args): ScanResult {
     say("[*] candidates (internet + sensitive): ${candidates.size}")
 
     val android = adb.shell(device.serial, "getprop ro.build.version.release").output.trim()
+    val reportMeta = readReportMeta(adb, device, android)
 
     val targets = candidates.map { PackagePath(it.key, paths.getValue(it.key)) }
     val endpoints = HashMap<String, List<String>>()
@@ -585,15 +589,41 @@ private fun performScan(args: Args): ScanResult {
         .sortedByDescending { it.score }
         .take(limit)
 
-    return ScanResult(device, apps, outDir, android, paths.size, paths)
+    return ScanResult(device, apps, outDir, android, paths.size, paths, reportMeta)
+}
+
+private fun readReportMeta(adb: Adb, device: Device, android: String): ReportMeta {
+    fun prop(key: String): String =
+        adb.shell(device.serial, "getprop $key", timeoutSec = 15).output.trim()
+
+    val userOut = adb.shell(device.serial, "am get-current-user", timeoutSec = 15).output
+    val user = userOut.lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.toIntOrNull() != null }
+        ?: "0"
+
+    return ReportMeta(
+        tool = "NOIR $VERSION",
+        host = Platform.describe(),
+        android = android,
+        sdk = prop("ro.build.version.sdk"),
+        build = prop("ro.build.display.id").ifBlank { prop("ro.build.id") },
+        fingerprint = prop("ro.build.fingerprint"),
+        user = user,
+        generatedAt = OffsetDateTime.now().toString()
+    )
 }
 
 private fun writeReports(result: ScanResult, recommendations: List<Recommendation>) {
-    File(result.outDir, "report.json").writeText(Report.json(result.device, result.apps, recommendations))
-    File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations))
+    File(result.outDir, "report.json").writeText(Report.json(result.device, result.apps, recommendations, result.meta))
+    File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations, result.meta))
     writeDomainFiles(result.outDir, result.apps)
-    File(result.outDir, "plan.txt").writeText(plannedCommands(recommendations).joinToString("\n", postfix = "\n"))
-    File(result.outDir, "rollback.txt").writeText(rollbackLines(recommendations).joinToString("\n", postfix = "\n"))
+    File(result.outDir, "plan.txt").writeText(
+        plannedCommands(recommendations, result.meta.user).joinToString("\n", postfix = "\n")
+    )
+    File(result.outDir, "rollback.txt").writeText(
+        rollbackLines(recommendations, result.meta.user).joinToString("\n", postfix = "\n")
+    )
 }
 
 private fun writeDomainFiles(outDir: File, apps: List<AppEntry>) {
@@ -633,36 +663,141 @@ private fun writeDomainFiles(outDir: File, apps: List<AppEntry>) {
     File(outDir, "domains.txt").writeText(trackers)
 }
 
-private fun plannedCommands(recommendations: List<Recommendation>): List<String> =
+internal data class AppOpAction(val pkg: String, val op: String) {
+    fun setCommand(user: String?): String =
+        "cmd appops set${userArg(user)} $pkg $op ignore"
+
+    fun getCommand(user: String?): String =
+        "cmd appops get${userArg(user)} $pkg $op"
+
+    fun rollbackCommand(user: String?, mode: String = "default"): String =
+        "adb shell cmd appops set${userArg(user)} $pkg $op ${mode.ifBlank { "default" }}"
+
+    private fun userArg(user: String?): String =
+        if (user.isNullOrBlank()) "" else " --user $user"
+}
+
+private fun plannedActions(recommendations: List<Recommendation>): List<AppOpAction> =
     recommendations.filter { it.autoSafe }.mapNotNull { r ->
         when (r.action) {
-            ActionType.APPOP_PROJECT_MEDIA -> "cmd appops set ${r.pkg} PROJECT_MEDIA ignore"
-            ActionType.APPOP_USAGE_STATS -> "cmd appops set ${r.pkg} GET_USAGE_STATS ignore"
+            ActionType.APPOP_PROJECT_MEDIA -> AppOpAction(r.pkg, "PROJECT_MEDIA")
+            ActionType.APPOP_USAGE_STATS -> AppOpAction(r.pkg, "GET_USAGE_STATS")
             else -> null
         }
     }.distinct()
 
-private fun rollbackLines(recommendations: List<Recommendation>): List<String> =
-    recommendations.filter { it.autoSafe }.mapNotNull { r ->
-        when (r.action) {
-            ActionType.APPOP_PROJECT_MEDIA -> "adb shell cmd appops set ${r.pkg} PROJECT_MEDIA default"
-            ActionType.APPOP_USAGE_STATS -> "adb shell cmd appops set ${r.pkg} GET_USAGE_STATS default"
-            else -> null
-        }
-    }.distinct()
+private fun plannedCommands(recommendations: List<Recommendation>, user: String? = null): List<String> =
+    plannedActions(recommendations).map { it.setCommand(user) }
 
-private fun applyCommands(adb: Adb, result: ScanResult, planned: List<String>) {
-    println()
+private fun rollbackLines(recommendations: List<Recommendation>, user: String? = null): List<String> =
+    plannedActions(recommendations).map { it.rollbackCommand(user) }
+
+private fun parseAppOpMode(output: String, op: String): String? {
+    val match = Regex("(?m)^\\s*${Regex.escape(op)}:\\s*([a-zA-Z_]+)").find(output)
+    return match?.groupValues?.get(1)
+}
+
+private fun flatOutput(output: String): String =
+    output.trim().replace("\n", " | ").ifBlank { "(no output)" }
+
+private fun classifyAppOpFailure(output: String): String = when {
+    output.contains("device offline", ignoreCase = true) ||
+        output.contains("no devices", ignoreCase = true) ||
+        output.contains("device not found", ignoreCase = true) -> "adb connection"
+    output.contains("SecurityException", ignoreCase = true) ||
+        output.contains("Permission Denial", ignoreCase = true) ||
+        output.contains("not allowed", ignoreCase = true) -> "system permission"
+    output.contains("Unknown operation", ignoreCase = true) ||
+        output.contains("Unknown op", ignoreCase = true) -> "unknown AppOp"
+    output.contains("No such package", ignoreCase = true) ||
+        (output.contains("package", ignoreCase = true) && output.contains("not found", ignoreCase = true)) -> "package/user"
+    else -> "rejected"
+}
+
+internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpAction>) {
+    if (planned.isEmpty()) return
+    val user = result.meta.user.ifBlank { null }
     val applied = ArrayList<String>()
-    planned.forEach { command ->
-        val res = adb.shell(result.device.serial, command)
-        val status = if (res.ok) "ok" else "failed (${res.code})"
-        applied.add("$command\t$status")
-        println("  %-72s %s".format(command, status))
-    }
-    File(result.outDir, "applied.txt").writeText(applied.joinToString("\n", postfix = "\n"))
+    val rollback = ArrayList<String>()
+    var failed = 0
+    var permissionFailures = 0
+
+    applied.add("# NOIR applied commands")
+    applied.add("# generated: ${result.meta.generatedAt}")
+    applied.add("# tool: ${result.meta.tool}")
+    applied.add("# host: ${result.meta.host}")
+    applied.add("# device: ${result.device.model} (${result.device.serial}) · ${result.device.product}")
+    applied.add("# android: ${result.meta.android} (SDK ${result.meta.sdk})")
+    applied.add("# build: ${result.meta.build}")
+    applied.add("# fingerprint: ${result.meta.fingerprint}")
+    applied.add("# user: ${result.meta.user.ifBlank { "unknown (default user)" }}")
+    applied.add("#")
+
     println()
+    planned.forEach { action ->
+        val before = adb.shell(result.device.serial, action.getCommand(user), timeoutSec = 30)
+        val res = adb.shell(result.device.serial, action.setCommand(user), timeoutSec = 30)
+        val after = adb.shell(result.device.serial, action.getCommand(user), timeoutSec = 30)
+        val status = when {
+            res.timedOut -> "timeout (${res.code})"
+            res.ok -> "ok (0)"
+            else -> "failed (${res.code})"
+        }
+        val kind = if (!res.ok) classifyAppOpFailure(res.output) else ""
+        if (!res.ok) {
+            failed++
+            if (kind == "system permission") permissionFailures++
+        }
+
+        applied.add("${action.setCommand(user)}\t$status${if (kind.isNotBlank()) " [$kind]" else ""}")
+        applied.add("  before: ${flatOutput(before.output)}")
+        applied.add("  after:  ${flatOutput(after.output)}")
+        if (res.output.isBlank()) {
+            applied.add("  output: (empty)")
+        } else {
+            applied.add("  output:")
+            res.output.trimEnd().lineSequence().forEach { applied.add("    $it") }
+        }
+
+        println("  %-72s %s%s".format(action.setCommand(user), status, if (kind.isNotBlank()) " [$kind]" else ""))
+        if (!res.ok) {
+            val lines = res.output.trim().lineSequence().filter { it.isNotBlank() }.toList()
+            lines.take(4).forEach { println("      $it") }
+            if (lines.size > 4) println("      ... (${lines.size - 4} more lines in applied.txt)")
+        }
+
+        if (res.ok) {
+            val prior = parseAppOpMode(before.output, action.op) ?: "default"
+            rollback.add(action.rollbackCommand(user, prior))
+        }
+    }
+
+    File(result.outDir, "applied.txt").writeText(applied.joinToString("\n", postfix = "\n"))
+
+    val rollbackText = buildString {
+        appendLine("# NOIR rollback")
+        appendLine("# generated: ${result.meta.generatedAt}")
+        appendLine("# tool: ${result.meta.tool}")
+        appendLine("# only commands that succeeded in this run are listed")
+        appendLine("# device: ${result.device.model} (${result.device.serial}) · user ${result.meta.user.ifBlank { "unknown" }}")
+        if (rollback.isEmpty()) {
+            appendLine("# no appops changes were applied")
+        } else {
+            rollback.forEach { appendLine(it) }
+        }
+    }
+    File(result.outDir, "rollback.txt").writeText(rollbackText)
+    File(result.outDir, "applied.txt").let { println("\n[*] applied: ${it.absolutePath}") }
     println("[*] rollback: ${File(result.outDir, "rollback.txt").absolutePath}")
+    println("[*] ${planned.size - failed}/${planned.size} appops commands applied")
+
+    if (failed > 0) {
+        println("[!] $failed command(s) failed — full stdout/stderr is in applied.txt")
+        if (permissionFailures > 0) {
+            println("[i] The device rejected shell-level AppOps changes. On ColorOS/OPPO/OnePlus,")
+            println("    check Developer options → Permission monitoring, or use Shizuku.")
+        }
+    }
 }
 
 private fun renderDashboard(args: Args, result: ScanResult, recommendations: List<Recommendation>): String {
@@ -951,7 +1086,7 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
 
     val highPkgs = high.map { it.pkg }.toSet()
     val appsByPkg = scan.apps.associateBy { it.pkg }
-    val planned = plannedCommands(Advisor.advise(scan.apps).filter { it.pkg in highPkgs })
+    val planned = plannedActions(Advisor.advise(scan.apps).filter { it.pkg in highPkgs })
 
     println()
     println("== 代码级高风险 ${high.size} 个 ==")

@@ -8,9 +8,24 @@ package app.noir.core
 /** Renders scan results as portable JSON and human-readable Markdown. */
 object Report {
 
-    fun json(device: Device, apps: List<AppEntry>, recommendations: List<Recommendation> = emptyList()): String {
+    fun json(
+        device: Device,
+        apps: List<AppEntry>,
+        recommendations: List<Recommendation> = emptyList(),
+        meta: ReportMeta = ReportMeta()
+    ): String {
         val sb = StringBuilder()
         sb.append("{\n")
+        sb.append("  \"environment\": {\n")
+        sb.append("    \"tool\": \"").append(esc(meta.tool)).append("\",\n")
+        sb.append("    \"host\": \"").append(esc(meta.host)).append("\",\n")
+        sb.append("    \"android\": \"").append(esc(meta.android)).append("\",\n")
+        sb.append("    \"sdk\": \"").append(esc(meta.sdk)).append("\",\n")
+        sb.append("    \"build\": \"").append(esc(meta.build)).append("\",\n")
+        sb.append("    \"fingerprint\": \"").append(esc(meta.fingerprint)).append("\",\n")
+        sb.append("    \"user\": \"").append(esc(meta.user)).append("\",\n")
+        sb.append("    \"generatedAt\": \"").append(esc(meta.generatedAt)).append("\"\n")
+        sb.append("  },\n")
         sb.append("  \"device\": {\"serial\": \"").append(esc(device.serial))
             .append("\", \"model\": \"").append(esc(device.model)).append("\"},\n")
         sb.append("  \"apps\": [\n")
@@ -49,11 +64,19 @@ object Report {
     fun markdown(
         device: Device,
         apps: List<AppEntry>,
-        recommendations: List<Recommendation> = emptyList()
+        recommendations: List<Recommendation> = emptyList(),
+        meta: ReportMeta = ReportMeta()
     ): String {
         val sb = StringBuilder()
         sb.append("# NOIR report\n\n")
+        sb.append("- tool: ").append(meta.tool).append("\n")
+        sb.append("- host: ").append(meta.host).append("\n")
         sb.append("- device: `").append(device.model).append("` (`").append(device.serial).append("`)\n")
+        sb.append("- android: ").append(meta.android).append(" (SDK ").append(meta.sdk).append(")\n")
+        sb.append("- build: ").append(meta.build).append("\n")
+        sb.append("- fingerprint: ").append(meta.fingerprint).append("\n")
+        sb.append("- user: ").append(meta.user).append("\n")
+        sb.append("- generated: ").append(meta.generatedAt).append("\n")
         sb.append("- apps flagged: ").append(apps.size).append("\n")
         sb.append("- recommendations: ").append(recommendations.size).append("\n\n")
 

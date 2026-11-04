@@ -29,6 +29,26 @@ class ReportTest {
     }
 
     @Test
+    fun `report includes reproducible environment details`() {
+        val meta = ReportMeta(
+            tool = "NOIR test",
+            host = "macOS aarch64",
+            android = "16",
+            sdk = "36",
+            build = "PLK110_16.0.0",
+            fingerprint = "oneplus/PLK110:16/abc",
+            user = "0",
+            generatedAt = "2026-11-04T00:00:00Z"
+        )
+        val json = Report.json(Device("s", "device", "PLK110"), emptyList(), meta = meta)
+        val md = Report.markdown(Device("s", "device", "PLK110"), emptyList(), meta = meta)
+        assertTrue(json.contains("\"sdk\": \"36\""))
+        assertTrue(json.contains("\"build\": \"PLK110_16.0.0\""))
+        assertTrue(md.contains("- user: 0"))
+        assertTrue(md.contains("PLK110_16.0.0"))
+    }
+
+    @Test
     fun `markdown contains the report table header`() {
         val entry = AppEntry(
             pkg = "com.example",
