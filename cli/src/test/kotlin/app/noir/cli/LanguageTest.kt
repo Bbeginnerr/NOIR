@@ -87,7 +87,7 @@ class LanguageTest {
             Guidance.unauthorizedGuide(Lang.EN),
             Guidance.adbMissing(Lang.EN),
             Guidance.jadxMissing(Lang.EN),
-            Guidance.about("0.4.0")
+            Guidance.about("0.4.1")
         )
         blocks.forEach { block ->
             assertFalse(han.containsMatchIn(block), "untranslated guidance:\n$block")
