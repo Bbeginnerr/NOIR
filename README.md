@@ -13,7 +13,7 @@
 [![release](https://img.shields.io/github/v/release/Verlintas/NOIR)](https://github.com/Verlintas/NOIR/releases)
 [![license](https://img.shields.io/github/license/Verlintas/NOIR)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-2ea44f)
-[![AtomGit](https://img.shields.io/badge/AtomGit-Verlintas%2FNOIR-2f81f7)](https://atomgit.com/Verlintas/NOIR)
+[![AtomGit G-Star](https://atomgit.com/Verlintas/NOIR/star/new_badge.svg)](https://atomgit.com/Verlintas/NOIR)
 
 **把「这台手机到底能泄露什么」变成一份可复现的报告。**
 
@@ -23,7 +23,7 @@ NOIR 是一个跑在电脑上的审计工具，通过 `adb` 读取已连接 Andr
 
 **官网 / Website:** https://verlintas.dev/noir/ · [中文](https://verlintas.dev/noir/zh/)
 
-**AtomGit 镜像 / Mirror:** https://atomgit.com/Verlintas/NOIR
+**AtomGit G-Star 项目 / Mirror:** https://atomgit.com/Verlintas/NOIR
 
 ---
 
