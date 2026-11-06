@@ -190,13 +190,13 @@ private fun guided() {
 
     val args = Args(emptyList())
     val result = performScan(args)
-    val recommendations = Advisor.advise(result.apps)
+    val recommendations = effectiveRecommendations(adb, result, Advisor.advise(result.apps))
     writeReports(result, recommendations)
 
     println()
     print(renderDashboard(args, result, recommendations))
 
-    val planned = plannedActions(recommendations)
+    val planned = effectiveActions(adb, result, recommendations)
     println()
     println("  可以安全执行 ${planned.size} 条（appops，可回滚）")
     if (planned.isEmpty()) {
@@ -269,7 +269,8 @@ internal data class ScanResult(
     val android: String,
     val installed: Int,
     val paths: Map<String, String>,
-    val meta: ReportMeta
+    val meta: ReportMeta,
+    val adb: Adb
 )
 
 private fun cmdScan(raw: List<String>) {
@@ -318,7 +319,7 @@ private fun cmdDiff(raw: List<String>) {
 private fun cmdAuto(raw: List<String>) {
     val args = Args(raw)
     val result = performScan(args)
-    val recommendations = Advisor.advise(result.apps)
+    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps))
     writeReports(result, recommendations)
 
     println()
@@ -329,7 +330,7 @@ private fun cmdAuto(raw: List<String>) {
         println("  %-5s %-16s %-46s %s".format(r.risk, r.action.label, r.pkg, r.reason))
     }
 
-    val planned = plannedActions(recommendations)
+    val planned = effectiveActions(result.adb, result, recommendations)
     println()
     println("== 将执行（${planned.size} 条，全部可回滚）==")
     planned.forEach { println("  ${it.setCommand(result.meta.user)}") }
@@ -360,7 +361,7 @@ private fun cmdAuto(raw: List<String>) {
 private fun cmdUi(raw: List<String>) {
     val args = Args(raw)
     val result = performScan(args)
-    val recommendations = Advisor.advise(result.apps)
+    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps))
     writeReports(result, recommendations)
 
     if (!args.flag("no-clear") && System.console() != null) {
@@ -619,7 +620,7 @@ private fun performScan(args: Args): ScanResult {
         .sortedByDescending { it.score }
         .take(limit)
 
-    return ScanResult(device, apps, outDir, android, paths.size, paths, reportMeta)
+    return ScanResult(device, apps, outDir, android, paths.size, paths, reportMeta, adb)
 }
 
 private fun readReportMeta(adb: Adb, device: Device, android: String): ReportMeta {
@@ -649,11 +650,12 @@ private fun writeReports(result: ScanResult, recommendations: List<Recommendatio
     File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations, result.meta))
     File(result.outDir, "report.html").writeText(Report.html(result.device, result.apps, recommendations, result.meta))
     writeDomainFiles(result.outDir, result.apps)
+    val effective = effectiveActions(result.adb, result, recommendations)
     File(result.outDir, "plan.txt").writeText(
-        plannedCommands(recommendations, result.meta.user).joinToString("\n", postfix = "\n")
+        effective.joinToString("\n") { it.setCommand(result.meta.user) } + if (effective.isEmpty()) "" else "\n"
     )
     File(result.outDir, "rollback.txt").writeText(
-        rollbackLines(recommendations, result.meta.user).joinToString("\n", postfix = "\n")
+        effective.joinToString("\n") { it.rollbackCommand(result.meta.user) } + if (effective.isEmpty()) "" else "\n"
     )
 }
 
@@ -717,15 +719,61 @@ private fun plannedActions(recommendations: List<Recommendation>): List<AppOpAct
         }
     }.distinct()
 
-private fun plannedCommands(recommendations: List<Recommendation>, user: String? = null): List<String> =
-    plannedActions(recommendations).map { it.setCommand(user) }
+internal fun parseAppOpMode(output: String, op: String): String? {
+    val explicit = Regex("(?m)^\\s*${Regex.escape(op)}:\\s*([a-zA-Z_]+)").find(output)
+    if (explicit != null) return explicit.groupValues[1]
+    val default = Regex("(?m)^\\s*Default mode:\\s*([a-zA-Z_]+)").find(output)
+    return default?.groupValues?.get(1)
+}
 
-private fun rollbackLines(recommendations: List<Recommendation>, user: String? = null): List<String> =
-    plannedActions(recommendations).map { it.rollbackCommand(user) }
+/**
+ * Drops AppOp recommendations that are already in their target state. A
+ * declared capability is not a change: PROJECT_MEDIA is only relevant when the
+ * app currently holds the permanent screen-capture grant.
+ */
+internal fun effectiveRecommendations(
+    adb: Adb,
+    result: ScanResult,
+    recommendations: List<Recommendation>
+): List<Recommendation> {
+    val user = result.meta.user.ifBlank { null }
+    return recommendations.filter { recommendation ->
+        val op = when (recommendation.action) {
+            ActionType.APPOP_PROJECT_MEDIA -> "PROJECT_MEDIA"
+            ActionType.APPOP_USAGE_STATS -> "GET_USAGE_STATS"
+            else -> return@filter true
+        }
+        val query = adb.shell(
+            result.device.serial,
+            AppOpAction(recommendation.pkg, op).getCommand(user),
+            timeoutSec = 30
+        )
+        if (!query.ok) return@filter true
+        val current = parseAppOpMode(query.output, op) ?: return@filter true
+        when (recommendation.action) {
+            ActionType.APPOP_PROJECT_MEDIA -> current == "allow"
+            ActionType.APPOP_USAGE_STATS -> current != "ignore"
+            else -> true
+        }
+    }
+}
 
-private fun parseAppOpMode(output: String, op: String): String? {
-    val match = Regex("(?m)^\\s*${Regex.escape(op)}:\\s*([a-zA-Z_]+)").find(output)
-    return match?.groupValues?.get(1)
+/**
+ * Keeps only AppOp actions whose target mode differs from the effective mode
+ * already present on the device. A capability declaration is not a change.
+ */
+internal fun effectiveActions(
+    adb: Adb,
+    result: ScanResult,
+    recommendations: List<Recommendation>
+): List<AppOpAction> {
+    val user = result.meta.user.ifBlank { null }
+    return plannedActions(recommendations).filter { action ->
+        val query = adb.shell(result.device.serial, action.getCommand(user), timeoutSec = 30)
+        if (!query.ok) return@filter true
+        val current = parseAppOpMode(query.output, action.op)
+        current == null || current != "ignore"
+    }
 }
 
 private fun flatOutput(output: String): String =
@@ -1134,7 +1182,12 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
 
     val highPkgs = high.map { it.pkg }.toSet()
     val appsByPkg = scan.apps.associateBy { it.pkg }
-    val planned = plannedActions(Advisor.advise(scan.apps).filter { it.pkg in highPkgs })
+    val recommendations = effectiveRecommendations(
+        adb,
+        scan,
+        Advisor.advise(scan.apps).filter { it.pkg in highPkgs }
+    )
+    val planned = effectiveActions(adb, scan, recommendations)
 
     println()
     println("== 代码级高风险 ${high.size} 个 ==")

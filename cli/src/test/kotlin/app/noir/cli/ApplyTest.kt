@@ -46,7 +46,8 @@ class ApplyTest {
                 fingerprint = "test/fingerprint",
                 user = "0",
                 generatedAt = "2026-11-04T00:00:00Z"
-            )
+            ),
+            adb = Adb(script.absolutePath)
         )
         return script to result
     }
