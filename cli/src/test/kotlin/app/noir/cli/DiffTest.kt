@@ -18,8 +18,9 @@ class DiffTest {
         score: Int,
         category: String = "遥测/统计",
         permissions: List<String> = listOf("INTERNET"),
-        endpoints: List<String> = listOf("https://tracker.example.com/p")
-    ) = ReportApp(pkg, score, category, permissions, endpoints)
+        endpoints: List<String> = listOf("https://tracker.example.com/p"),
+        categoryKey: String? = null
+    ) = ReportApp(pkg, score, category, permissions, endpoints, categoryKey)
 
     private fun snapshot(path: String, apps: List<ReportApp>) = ReportSnapshot(
         path = path,
@@ -65,6 +66,16 @@ class DiffTest {
         val result = diffReports(old, new)
         assertEquals(1, result.removed.size)
         assertEquals(20, result.changed.single().scoreDelta.unaryMinus())
+        assertTrue(!result.regressions)
+    }
+
+    @Test
+    fun `a language switch is not reported as a category change`() {
+        val old = snapshot("old", listOf(app("com.example.a", 12, category = "遥测/统计")))
+        val new = snapshot("new", listOf(app("com.example.a", 12, category = "telemetry")))
+
+        val result = diffReports(old, new)
+        assertTrue(result.changed.isEmpty())
         assertTrue(!result.regressions)
     }
 

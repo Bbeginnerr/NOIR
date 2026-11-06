@@ -60,6 +60,22 @@ class TuiTest {
     }
 
     @Test
+    fun `english dashboard contains no chinese characters`() {
+        val output = Tui.dashboard(
+            device = Device("serial", "device", "Pixel", "product"),
+            apps = listOf(app("com.example.one")),
+            recommendations = listOf(
+                Recommendation("com.example.one", ActionType.APPOP_PROJECT_MEDIA, "MED", "demo", true)
+            ),
+            android = "16",
+            host = "test host",
+            installed = 1,
+            lang = Lang.EN
+        )
+        assertTrue(!Regex("[\\u4e00-\\u9fff]").containsMatchIn(output))
+    }
+
+    @Test
     fun `dashboard renders in ascii mode without box glyphs`() {
         val output = Tui.dashboard(
             device = Device("s", "device", "Pixel", "p"),

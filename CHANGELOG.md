@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **automatic English interface** — NOIR now follows the Android device
+  locale, then the host locale, and renders the CLI, dashboard and reports in
+  English when the device is not Chinese. `--lang zh|en|auto` and `NOIR_LANG`
+  override the detection. Reports keep stable `categoryKey` / `actionKey`
+  fields so a Chinese report can still be diffed against an English one.
+
 ### Fixed
 
 - **screen-capture recommendations** — removed the misleading

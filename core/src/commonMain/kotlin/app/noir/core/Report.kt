@@ -12,7 +12,8 @@ object Report {
         device: Device,
         apps: List<AppEntry>,
         recommendations: List<Recommendation> = emptyList(),
-        meta: ReportMeta = ReportMeta()
+        meta: ReportMeta = ReportMeta(),
+        lang: Lang = Lang.ZH
     ): String {
         val sb = StringBuilder()
         sb.append("{\n")
@@ -36,11 +37,13 @@ object Report {
             sb.append("      \"system\": ").append(a.isSystem).append(",\n")
             sb.append("      \"debuggable\": ").append(a.debuggable).append(",\n")
             sb.append("      \"installer\": ").append(a.installer?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
-            sb.append("      \"category\": \"").append(esc(a.category.label)).append("\",\n")
+            sb.append("      \"category\": \"").append(esc(a.category.localized(lang))).append("\",\n")
+            sb.append("      \"categoryKey\": \"").append(a.category.name).append("\",\n")
             sb.append("      \"vendor\": ").append(a.vendor?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
             sb.append("      \"sharedUid\": ").append(a.sharedUid?.let { "\"${esc(it)}\"" } ?: "null").append(",\n")
-            sb.append("      \"dataTypes\": ").append(array(a.dataTypes.map { it.label })).append(",\n")
-            sb.append("      \"leaks\": ").append(leaksJson(a)).append(",\n")
+            sb.append("      \"dataTypes\": ").append(array(a.dataTypes.map { it.localized(lang) })).append(",\n")
+            sb.append("      \"dataTypeKeys\": ").append(array(a.dataTypes.map { it.name })).append(",\n")
+            sb.append("      \"leaks\": ").append(leaksJson(a, lang)).append(",\n")
             sb.append("      \"score\": ").append(a.score).append(",\n")
             sb.append("      \"permissions\": ").append(array(a.permissions)).append(",\n")
             sb.append("      \"endpoints\": ").append(array(a.endpoints)).append("\n")
@@ -51,7 +54,8 @@ object Report {
         recommendations.forEachIndexed { i, r ->
             sb.append("    {\n")
             sb.append("      \"package\": \"").append(esc(r.pkg)).append("\",\n")
-            sb.append("      \"action\": \"").append(esc(r.action.label)).append("\",\n")
+            sb.append("      \"action\": \"").append(esc(r.action.localized(lang))).append("\",\n")
+            sb.append("      \"actionKey\": \"").append(r.action.name).append("\",\n")
             sb.append("      \"risk\": \"").append(esc(r.risk)).append("\",\n")
             sb.append("      \"reason\": \"").append(esc(r.reason)).append("\",\n")
             sb.append("      \"autoSafe\": ").append(r.autoSafe).append("\n")
@@ -65,7 +69,8 @@ object Report {
         device: Device,
         apps: List<AppEntry>,
         recommendations: List<Recommendation> = emptyList(),
-        meta: ReportMeta = ReportMeta()
+        meta: ReportMeta = ReportMeta(),
+        lang: Lang = Lang.ZH
     ): String {
         val sb = StringBuilder()
         sb.append("# NOIR report\n\n")
@@ -86,7 +91,7 @@ object Report {
         apps.forEach { a ->
             sb.append("| ").append(a.score)
                 .append(" | `").append(a.pkg).append("`")
-                .append(" | ").append(a.category.label)
+                .append(" | ").append(a.category.localized(lang))
                 .append(" | ").append(a.vendor ?: "—")
                 .append(" | ").append(if (a.isSystem) "yes" else "no")
                 .append(" | ").append(a.permissions.size)
@@ -101,7 +106,7 @@ object Report {
             sb.append("|:---:|---|---|---|\n")
             recommendations.forEach { r ->
                 sb.append("| ").append(r.risk)
-                    .append(" | ").append(r.action.label)
+                    .append(" | ").append(r.action.localized(lang))
                     .append(" | `").append(r.pkg).append("`")
                     .append(" | ").append(r.reason)
                     .append(" |\n")
@@ -128,16 +133,16 @@ object Report {
             sb.append(" · system: ").append(a.isSystem)
             sb.append(" · debuggable: ").append(a.debuggable)
             sb.append(" · installer: ").append(a.installer ?: "unknown")
-            sb.append(" · category: ").append(a.category.label)
+            sb.append(" · category: ").append(a.category.localized(lang))
             sb.append(" · vendor: ").append(a.vendor ?: "unknown")
             sb.append(" · shared uid: ").append(a.sharedUid ?: "—").append("\n")
             if (a.dataTypes.isNotEmpty()) {
-                sb.append("- data: ").append(a.dataTypes.joinToString(", ") { it.label }).append("\n")
+                sb.append("- data: ").append(a.dataTypes.joinToString(", ") { it.localized(lang) }).append("\n")
             }
             if (a.leaks.isNotEmpty()) {
                 sb.append("- leak paths:\n")
                 a.leaks.forEach { (data, hosts) ->
-                    sb.append("  - ").append(data.label).append(" → ").append(hosts.joinToString(", ")).append("\n")
+                    sb.append("  - ").append(data.localized(lang)).append(" → ").append(hosts.joinToString(", ")).append("\n")
                 }
             }
             if (a.permissions.isNotEmpty()) {
@@ -156,15 +161,16 @@ object Report {
         device: Device,
         apps: List<AppEntry>,
         recommendations: List<Recommendation> = emptyList(),
-        meta: ReportMeta = ReportMeta()
+        meta: ReportMeta = ReportMeta(),
+        lang: Lang = Lang.ZH
     ): String {
         val high = recommendations.count { it.risk == "HIGH" }
         val med = recommendations.count { it.risk == "MED" }
         val low = recommendations.count { it.risk == "LOW" }
-        val grouped = apps.groupingBy { it.category.label }.eachCount().toList()
+        val grouped = apps.groupingBy { it.category.localized(lang) }.eachCount().toList()
             .sortedByDescending { it.second }
         val maxGroup = grouped.firstOrNull()?.second ?: 1
-        val categories = apps.map { it.category.label }.distinct().sorted()
+        val categories = apps.map { it.category.localized(lang) }.distinct().sorted()
         val shared = apps.filter { it.sharedUid != null }
             .groupBy { it.sharedUid!! }
             .filterValues { it.size > 1 }
@@ -175,7 +181,7 @@ object Report {
         val sb = StringBuilder()
 
         sb.append("""<!doctype html>
-<html lang="en">
+<html lang="${if (lang == Lang.ZH) "zh-CN" else "en"}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -263,7 +269,7 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
     <tbody>
 """)
             apps.take(20).forEachIndexed { index, app ->
-                sb.append("""      <tr><td>${index + 1}</td><td>${scoreHtml(app.score)}</td><td><span class="mono">${h(app.pkg)}</span></td><td>${h(app.category.label)}</td><td>${h(app.vendor ?: "—")}</td><td>${app.permissions.size}</td><td>${app.uploadEndpoints.size}</td><td>${app.commandEndpoints.size}</td></tr>
+                sb.append("""      <tr><td>${index + 1}</td><td>${scoreHtml(app.score)}</td><td><span class="mono">${h(app.pkg)}</span></td><td>${h(app.category.localized(lang))}</td><td>${h(app.vendor ?: "—")}</td><td>${app.permissions.size}</td><td>${app.uploadEndpoints.size}</td><td>${app.commandEndpoints.size}</td></tr>
 """)
             }
             sb.append("""    </tbody>
@@ -283,7 +289,7 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
 """)
             recommendations.forEach { rec ->
                 val cls = rec.risk.lowercase()
-                sb.append("""      <tr><td><span class="badge $cls">${h(rec.risk)}</span>${if (rec.autoSafe) """ <span class="badge auto">auto</span>""" else ""}</td><td>${h(rec.action.label)}</td><td><span class="mono">${h(rec.pkg)}</span></td><td>${h(rec.reason)}</td></tr>
+                sb.append("""      <tr><td><span class="badge $cls">${h(rec.risk)}</span>${if (rec.autoSafe) """ <span class="badge auto">auto</span>""" else ""}</td><td>${h(rec.action.localized(lang))}</td><td><span class="mono">${h(rec.pkg)}</span></td><td>${h(rec.reason)}</td></tr>
 """)
             }
             sb.append("""    </tbody>
@@ -313,11 +319,11 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
                 app.score >= 25 -> "med"
                 else -> "low"
             }
-            val search = h("${app.pkg} ${app.category.label} ${app.vendor ?: ""}".lowercase())
-            sb.append("""    <details class="app" data-search="$search" data-category="${h(app.category.label)}">
+            val search = h("${app.pkg} ${app.category.localized(lang)} ${app.vendor ?: ""}".lowercase())
+            sb.append("""    <details class="app" data-search="$search" data-category="${h(app.category.localized(lang))}">
       <summary>
         <span class="score $scoreClass">${app.score}</span>
-        <span><span class="app-title">${h(app.pkg)}</span><span class="app-meta">${h(app.category.label)} · ${h(app.vendor ?: "unknown vendor")} · uid ${h(app.uid)}</span></span>
+        <span><span class="app-title">${h(app.pkg)}</span><span class="app-meta">${h(app.category.localized(lang))} · ${h(app.vendor ?: "unknown vendor")} · uid ${h(app.uid)}</span></span>
         <span class="counts"><b>${app.permissions.size}</b> perms · <b>${app.uploadEndpoints.size}</b> up · <b>${app.commandEndpoints.size}</b> cmd</span>
       </summary>
       <div class="detail">
@@ -327,14 +333,14 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
 """)
             }
             if (app.dataTypes.isNotEmpty()) {
-                sb.append("""        <h4>Data types</h4><div class="tags">${app.dataTypes.joinToString(" ") { """<span class="tag">${h(it.label)}</span>""" }}</div>
+                sb.append("""        <h4>Data types</h4><div class="tags">${app.dataTypes.joinToString(" ") { """<span class="tag">${h(it.localized(lang))}</span>""" }}</div>
 """)
             }
             if (app.leaks.isNotEmpty()) {
                 sb.append("""        <h4>Leak paths</h4>
 """)
                 app.leaks.forEach { (data, hosts) ->
-                    sb.append("""        <div class="leak"><b>${h(data.label)}</b> → ${h(hosts.joinToString(", "))}</div>
+                    sb.append("""        <div class="leak"><b>${h(data.localized(lang))}</b> → ${h(hosts.joinToString(", "))}</div>
 """)
                 }
             }
@@ -412,10 +418,10 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
         return sb.toString()
     }
 
-    private fun leaksJson(app: AppEntry): String {
+    private fun leaksJson(app: AppEntry, lang: Lang): String {
         if (app.leaks.isEmpty()) return "{}"
         return app.leaks.entries.joinToString(prefix = "{", postfix = "}") { (data, hosts) ->
-            "\"${esc(data.label)}\":" + array(hosts)
+            "\"${esc(data.localized(lang))}\":" + array(hosts)
         }
     }
 

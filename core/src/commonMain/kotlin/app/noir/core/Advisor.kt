@@ -45,7 +45,7 @@ object Advisor {
         "com.android.incallui"
     )
 
-    fun advise(apps: List<AppEntry>): List<Recommendation> {
+    fun advise(apps: List<AppEntry>, lang: Lang = Lang.ZH): List<Recommendation> {
         val out = ArrayList<Recommendation>()
 
         apps.forEach { app ->
@@ -59,7 +59,10 @@ object Advisor {
                     app.pkg,
                     ActionType.APPOP_USAGE_STATS,
                     "MED",
-                    "遥测类系统应用可读取应用使用统计",
+                    when (lang) {
+                        Lang.ZH -> "遥测类系统应用可读取应用使用统计"
+                        Lang.EN -> "system telemetry component can read app usage statistics"
+                    },
                     autoSafe = true
                 )
             }
@@ -69,7 +72,16 @@ object Advisor {
                     app.pkg,
                     ActionType.REVIEW,
                     if (app.isSystem) "HIGH" else "MED",
-                    if (app.isSystem) "遥测/广告类系统组件，无法卸载，建议 DNS 层拦截" else "遥测/广告密度高，评估后决定是否保留",
+                    when {
+                        app.isSystem && lang == Lang.ZH ->
+                            "遥测/广告类系统组件，无法卸载，建议 DNS 层拦截"
+                        app.isSystem ->
+                            "telemetry/ad system component; cannot uninstall, block at the DNS layer"
+                        lang == Lang.ZH ->
+                            "遥测/广告密度高，评估后决定是否保留"
+                        else ->
+                            "high telemetry/ad density; decide whether to keep it"
+                    },
                     autoSafe = false
                 )
             }
@@ -81,7 +93,10 @@ object Advisor {
                     app.pkg,
                     ActionType.BLOCK_DNS,
                     "LOW",
-                    "存在多个上报端点，可在 DNS 层拦截",
+                    when (lang) {
+                        Lang.ZH -> "存在多个上报端点，可在 DNS 层拦截"
+                        Lang.EN -> "multiple upload endpoints; block at the DNS layer"
+                    },
                     autoSafe = false
                 )
             }

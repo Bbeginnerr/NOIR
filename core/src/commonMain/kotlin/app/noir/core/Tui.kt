@@ -52,7 +52,8 @@ object Tui {
         host: String = "?",
         installed: Int = apps.size,
         ascii: Boolean = false,
-        color: Boolean = false
+        color: Boolean = false,
+        lang: Lang = Lang.ZH
     ): String {
         val s = Style(color && !ascii)
         val sb = StringBuilder()
@@ -129,12 +130,13 @@ object Tui {
         grouped.forEach { (category, count) ->
             val pct = if (apps.isEmpty()) 0 else count * 100 / apps.size
             line(
-                "  ${padRight(category.label, 12)}  ${bar(count, max, barWidth, s, ascii)}  " +
+                "  ${padRight(category.localized(lang), 12)}  ${bar(count, max, barWidth, s, ascii)}  " +
                     "${padLeft(count.toString(), 4)}  ${s.dim(padLeft("$pct%", 4))}"
             )
         }
         if (uncategorised > 0) {
-            line("  ${s.dim(padRight("未分类", 12))}  ${s.dim("· ".repeat(13))}  ${s.dim(padLeft(uncategorised.toString(), 4))}")
+            val unclassified = if (lang == Lang.EN) "unclassified" else "未分类"
+            line("  ${s.dim(padRight(unclassified, 12))}  ${s.dim("· ".repeat(13))}  ${s.dim(padLeft(uncategorised.toString(), 4))}")
         }
         line()
 
@@ -151,7 +153,7 @@ object Tui {
             val score = s.risk(app.score, padLeft(app.score.toString(), 5))
             line(
                 "  ${s.dim(padLeft((index + 1).toString(), 2))} $score  " +
-                    "${padRight(app.category.label, 10)}  " +
+                    "${padRight(app.category.localized(lang), 10)}  " +
                     "${padRight(truncate(app.pkg, pkgWidth), pkgWidth)}  " +
                     "${padLeft(app.uploadEndpoints.size.toString(), 2)} " +
                     padLeft(app.commandEndpoints.size.toString(), 3)
@@ -170,7 +172,7 @@ object Tui {
                 s.fg(251, 191, 36, "● MED $med") + "   " +
                 s.fg(52, 211, 153, "● LOW $low")
         )
-        val byAction = recommendations.groupBy { it.action.label }
+        val byAction = recommendations.groupBy { it.action.localized(lang) }
             .mapValues { it.value.size }
             .toList()
             .sortedByDescending { it.second }

@@ -13,11 +13,13 @@ import app.noir.core.Category
 import app.noir.core.Classifier
 import app.noir.core.Domains
 import app.noir.core.Device
+import app.noir.core.Lang
 import app.noir.core.Recommendation
 import app.noir.core.Report
 import app.noir.core.ReportMeta
 import app.noir.core.Rules
 import app.noir.core.Tui
+import app.noir.core.localized
 import app.noir.core.adb.Adb
 import app.noir.core.adb.DeviceScan
 import app.noir.core.adb.Dumpsys
@@ -52,24 +54,49 @@ private fun say(message: String) {
 private class NoirException(message: String, val hint: String? = null) : Exception(message)
 
 fun main(args: Array<String>) {
-    QUIET = args.contains("--quiet")
+    initLanguage(args.toList())
+    val cleaned = args.toList().withoutLanguage().toTypedArray()
+    QUIET = cleaned.contains("--quiet")
     try {
-        runMain(args)
+        runMain(cleaned)
     } catch (e: NoirException) {
         System.err.println()
-        System.err.println(Guidance.error(e.message ?: "出错了", e.hint))
+        System.err.println(Guidance.error(e.message ?: t("出错了", "something went wrong"), e.hint))
         exitProcess(1)
     } catch (e: Exception) {
         System.err.println()
         System.err.println(
             Guidance.error(
-                e.message ?: e::class.simpleName ?: "未知错误",
-                "加 --verbose 可以看完整堆栈；也可以先运行 noir doctor 检查环境。"
+                e.message ?: e::class.simpleName ?: t("未知错误", "unknown error"),
+                t(
+                    "加 --verbose 可以看完整堆栈；也可以先运行 noir doctor 检查环境。",
+                    "Add --verbose for the full stack trace; or run noir doctor to check the environment."
+                )
             )
         )
-        if (args.contains("--verbose")) e.printStackTrace()
+        if (cleaned.contains("--verbose")) e.printStackTrace()
         exitProcess(1)
     }
+}
+
+/** Removes the global language option before command dispatch. */
+private fun List<String>.withoutLanguage(): List<String> {
+    val out = ArrayList<String>(size)
+    var index = 0
+    while (index < size) {
+        val arg = this[index]
+        if (arg == "--lang" && index + 1 < size) {
+            index += 2
+            continue
+        }
+        if (arg.startsWith("--lang=")) {
+            index++
+            continue
+        }
+        out.add(arg)
+        index++
+    }
+    return out
 }
 
 private fun runMain(args: Array<String>) {
@@ -92,7 +119,7 @@ private fun runMain(args: Array<String>) {
         "-v", "--version", "version" -> println("NOIR $VERSION")
         "--about", "about" -> println(Guidance.about(VERSION))
         else -> {
-            System.err.println("不认识的命令：$command")
+            System.err.println(t("不认识的命令：$command", "unknown command: $command"))
             usage()
             exitProcess(2)
         }
@@ -105,8 +132,8 @@ private fun usage() {
         NOIR — audit what your phone can leak, from the desktop.
         runs on Windows 10/11, macOS and Debian/Ubuntu.
 
-        第一次用？直接运行 `noir`（不带参数），会进入向导。
-        想先了解它是什么：noir --about
+        ${t("第一次用？直接运行 `noir`（不带参数），会进入向导。", "First time? Run `noir` with no arguments for the guided flow.")}
+        ${t("想先了解它是什么：noir --about", "To understand what it is: noir --about")}
 
         usage:
           noir                                guided setup + scan (interactive)
@@ -147,6 +174,7 @@ private fun usage() {
           --purge            also offer to uninstall risky user apps
 
         display:
+          --lang <auto|zh|en> interface language (device locale, then host locale; or NOIR_LANG)
           --ascii            plain ASCII borders (legacy Windows console)
           --color            force ANSI colour (auto-detected on a TTY; off on legacy cmd.exe)
           --no-color         disable ANSI colour
@@ -172,25 +200,29 @@ private fun bannerSmall() {
 }
 
 private fun guided() {
-    bannerSmall()
-    println("  首次运行向导 · Ctrl+C 随时退出")
-    println()
-
     val adb = ensureAdbInteractive()
     val device = awaitDevice(adb, null, interactive = true)
+    applyDeviceLanguage(adb, device)
 
+    bannerSmall()
+    println(t("  首次运行向导 · Ctrl+C 随时退出", "  first-run guide · Ctrl+C to quit at any time"))
     println()
-    println("  设备：${device.model.ifBlank { device.serial }}  (${device.serial})")
-    print("  开始扫描并生成报告? [Y/n] ")
+    println(
+        t(
+            "  设备：${device.model.ifBlank { device.serial }}  (${device.serial})",
+            "  device: ${device.model.ifBlank { device.serial }}  (${device.serial})"
+        )
+    )
+    print(t("  开始扫描并生成报告? [Y/n] ", "  scan and write a report? [Y/n] "))
     val proceed = readLine()?.trim()?.lowercase()
     if (proceed == "n" || proceed == "no") {
-        println("  已取消。")
+        println(t("  已取消。", "  cancelled."))
         return
     }
 
     val args = Args(emptyList())
     val result = performScan(args)
-    val recommendations = effectiveRecommendations(adb, result, Advisor.advise(result.apps))
+    val recommendations = effectiveRecommendations(adb, result, Advisor.advise(result.apps, LANG))
     writeReports(result, recommendations)
 
     println()
@@ -198,36 +230,51 @@ private fun guided() {
 
     val planned = effectiveActions(adb, result, recommendations)
     println()
-    println("  可以安全执行 ${planned.size} 条（appops，可回滚）")
+    println(
+        t(
+            "  可以安全执行 ${planned.size} 条（appops，可回滚）",
+            "  ${planned.size} safe action(s) available (app-ops, reversible)"
+        )
+    )
     if (planned.isEmpty()) {
-        println("  没有需要自动处理的项。")
+        println(t("  没有需要自动处理的项。", "  nothing needs an automatic action."))
         return
     }
-    print("  现在执行? [y/N] ")
+    print(t("  现在执行? [y/N] ", "  apply now? [y/N] "))
     val apply = readLine()?.trim()?.lowercase()
     if (apply == "y" || apply == "yes") {
         applyCommands(adb, result, planned)
     } else {
-        println("  已跳过。之后可以运行：noir auto --apply")
+        println(
+            t(
+                "  已跳过。之后可以运行：noir auto --apply",
+                "  skipped. You can run `noir auto --apply` later."
+            )
+        )
     }
 }
 
 private fun ensureAdbInteractive(): Adb {
     Platform.findAdb()?.let { return Adb(it) }
 
-    println("  没有找到 adb。")
+    println(t("  没有找到 adb。", "  adb was not found."))
     println(Guidance.adbMissing())
-    print("  要现在下载 Android platform-tools（约 15 MB）吗? [Y/n] ")
+    print(t("  要现在下载 Android platform-tools（约 15 MB）吗? [Y/n] ", "  download Android platform-tools now (~15 MB)? [Y/n] "))
     val answer = readLine()?.trim()?.lowercase()
     if (answer == "n" || answer == "no") {
-        throw NoirException("需要 adb 才能继续。", Guidance.adbMissing())
+        throw NoirException(t("需要 adb 才能继续。", "adb is required to continue."), Guidance.adbMissing())
     }
 
-    print("  下载中 ")
+    print(t("  下载中 ", "  downloading "))
     val path = Setup.installAdb { read, total -> renderDownload(read, total) }
     println()
-    if (path == null) throw NoirException("adb 下载失败。", "检查网络后重试，或手动安装 adb。")
-    println("  已安装：$path")
+    if (path == null) {
+        throw NoirException(
+            t("adb 下载失败。", "adb download failed."),
+            t("检查网络后重试，或手动安装 adb。", "Check the network and retry, or install adb manually.")
+        )
+    }
+    println(t("  已安装：$path", "  installed: $path"))
     return Adb(path)
 }
 
@@ -252,6 +299,7 @@ private fun cmdDevices(raw: List<String>) {
         println(Guidance.deviceGuide())
         return
     }
+    devices.firstOrNull { it.state == "device" }?.let { applyDeviceLanguage(adb, it) }
     println("%-22s %-14s %-22s %s".format("SERIAL", "STATE", "MODEL", "PRODUCT"))
     devices.forEach {
         println("%-22s %-14s %-22s %s".format(it.serial, it.state, it.model, it.product))
@@ -283,7 +331,7 @@ private fun cmdScan(raw: List<String>) {
     result.apps.take(40).forEach { a ->
         println(
             "%5d  %-12s %-10s %-44s %d/%d/%d".format(
-                a.score, a.category.label, a.vendor ?: "—", a.pkg,
+                a.score, a.category.localized(LANG), a.vendor ?: "—", a.pkg,
                 a.permissions.size, a.uploadEndpoints.size, a.commandEndpoints.size
             )
         )
@@ -296,8 +344,14 @@ private fun cmdDiff(raw: List<String>) {
     val args = Args(raw)
     if (args.positional.size != 2) {
         throw NoirException(
-            "用法：noir diff <old-report.json> <new-report.json>",
-            "也可以直接传两个扫描输出目录，例如 noir diff noir-out-old noir-out-new。"
+            t(
+                "用法：noir diff <old-report.json> <new-report.json>",
+                "usage: noir diff <old-report.json> <new-report.json>"
+            ),
+            t(
+                "也可以直接传两个扫描输出目录，例如 noir diff noir-out-old noir-out-new。",
+                "You can also pass two scan output directories, e.g. noir diff noir-out-old noir-out-new."
+            )
         )
     }
 
@@ -308,8 +362,18 @@ private fun cmdDiff(raw: List<String>) {
 
     val oldFile = reportFile(args.positional[0])
     val newFile = reportFile(args.positional[1])
-    if (!oldFile.isFile) throw NoirException("找不到旧报告：${oldFile.path}", "先运行 noir scan --out <dir>。")
-    if (!newFile.isFile) throw NoirException("找不到新报告：${newFile.path}", "先运行 noir scan --out <dir>。")
+    if (!oldFile.isFile) {
+        throw NoirException(
+            t("找不到旧报告：${oldFile.path}", "old report not found: ${oldFile.path}"),
+            t("先运行 noir scan --out <dir>。", "Run noir scan --out <dir> first.")
+        )
+    }
+    if (!newFile.isFile) {
+        throw NoirException(
+            t("找不到新报告：${newFile.path}", "new report not found: ${newFile.path}"),
+            t("先运行 noir scan --out <dir>。", "Run noir scan --out <dir> first.")
+        )
+    }
 
     val result = diffReports(readReport(oldFile.path), readReport(newFile.path))
     println(if (args.flag("json")) renderDiffJson(result) else renderDiff(result))
@@ -319,39 +383,54 @@ private fun cmdDiff(raw: List<String>) {
 private fun cmdAuto(raw: List<String>) {
     val args = Args(raw)
     val result = performScan(args)
-    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps))
+    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps, LANG))
     writeReports(result, recommendations)
 
     println()
     print(renderDashboard(args, result, recommendations))
     println()
-    println("== 建议动作 (前 15) ==")
+    println(t("== 建议动作 (前 15) ==", "== recommended actions (first 15) =="))
     recommendations.take(15).forEach { r ->
-        println("  %-5s %-16s %-46s %s".format(r.risk, r.action.label, r.pkg, r.reason))
+        println("  %-5s %-16s %-46s %s".format(r.risk, r.action.localized(LANG), r.pkg, r.reason))
     }
 
     val planned = effectiveActions(result.adb, result, recommendations)
     println()
-    println("== 将执行（${planned.size} 条，全部可回滚）==")
+    println(
+        t(
+            "== 将执行（${planned.size} 条，全部可回滚）==",
+            "== will run (${planned.size}, all reversible) =="
+        )
+    )
     planned.forEach { println("  ${it.setCommand(result.meta.user)}") }
     println()
     println(Tui.clip("[+] ${result.outDir.absolutePath}"))
 
     if (!args.flag("apply")) {
         println()
-        println("[*] dry-run — 加 --apply 执行这 ${planned.size} 条")
+        println(
+            t(
+                "[*] dry-run — 加 --apply 执行这 ${planned.size} 条",
+                "[*] dry-run — add --apply to execute these ${planned.size}"
+            )
+        )
         return
     }
 
     if (!args.flag("yes")) {
         if (!isInteractive()) {
-            println("[!] --apply 在非交互环境下需要同时加 --yes")
+            println(
+                t(
+                    "[!] --apply 在非交互环境下需要同时加 --yes",
+                    "[!] --apply needs --yes when stdin is not interactive"
+                )
+            )
             return
         }
-        print("执行 ${planned.size} 条 appops 动作? [y/N] ")
+        print(t("执行 ${planned.size} 条 appops 动作? [y/N] ", "apply ${planned.size} app-ops action(s)? [y/N] "))
         val answer = readLine()?.trim()?.lowercase()
         if (answer != "y" && answer != "yes") {
-            println("aborted")
+            println(t("已取消", "aborted"))
             return
         }
     }
@@ -361,7 +440,7 @@ private fun cmdAuto(raw: List<String>) {
 private fun cmdUi(raw: List<String>) {
     val args = Args(raw)
     val result = performScan(args)
-    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps))
+    val recommendations = effectiveRecommendations(result.adb, result, Advisor.advise(result.apps, LANG))
     writeReports(result, recommendations)
 
     if (!args.flag("no-clear") && System.console() != null) {
@@ -377,10 +456,17 @@ private fun cmdUi(raw: List<String>) {
 private fun cmdDeep(raw: List<String>) {
     val args = Args(raw)
     val pkg = args.positional.firstOrNull()
-        ?: throw NoirException("缺少包名。", "用法：noir deep <package> [--serial S] [--out DIR]")
+        ?: throw NoirException(
+            t("缺少包名。", "missing package name."),
+            t(
+                "用法：noir deep <package> [--serial S] [--out DIR]",
+                "usage: noir deep <package> [--serial S] [--out DIR]"
+            )
+        )
 
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
+    applyDeviceLanguage(adb, device)
     val outDir = File(args.value("out") ?: "noir-out/deep-${pkg.replace('.', '_')}").apply { mkdirs() }
 
     val remote = adb.shell(device.serial, "pm path $pkg").output
@@ -388,7 +474,10 @@ private fun cmdDeep(raw: List<String>) {
         .firstOrNull { it.startsWith("package:") }
         ?.removePrefix("package:")
         ?.trim()
-        ?: throw NoirException("这台设备上没有安装 $pkg。", "先运行 noir scan 看看实际包名。")
+        ?: throw NoirException(
+            t("这台设备上没有安装 $pkg。", "$pkg is not installed on this device."),
+            t("先运行 noir scan 看看实际包名。", "Run noir scan first to see the actual package names.")
+        )
 
     val apk = File(outDir, "$pkg.apk")
     println("[*] pulling $remote")
@@ -400,7 +489,7 @@ private fun cmdDeep(raw: List<String>) {
     urls.filter { Rules.isUpload(it) || Rules.isCommand(it) }.forEach { println("    ! $it") }
 
     val jadxBin = Platform.findJadx(args.value("jadx"))
-        ?: throw NoirException("没有找到 jadx。", Guidance.jadxMissing())
+        ?: throw NoirException(t("没有找到 jadx。", "jadx was not found."), Guidance.jadxMissing())
 
     println("[*] decompiling with $jadxBin ...")
     val src = File(outDir, "src")
@@ -424,10 +513,19 @@ private fun cmdDeep(raw: List<String>) {
 private fun cmdBlock(raw: List<String>) {
     val args = Args(raw)
     val pkgs = args.positional
-    if (pkgs.isEmpty()) throw NoirException("缺少包名。", "用法：noir block <package...> [--apply]")
+    if (pkgs.isEmpty()) {
+        throw NoirException(
+            t("缺少包名。", "missing package name."),
+            t(
+                "用法：noir block <package...> [--apply]",
+                "usage: noir block <package...> [--apply]"
+            )
+        )
+    }
 
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
+    applyDeviceLanguage(adb, device)
 
     val actions = ArrayList<String>()
     pkgs.forEach { pkg ->
@@ -443,7 +541,7 @@ private fun cmdBlock(raw: List<String>) {
 
     if (!args.flag("apply")) {
         println()
-        println("# dry-run — 加 --apply 执行")
+        println(t("# dry-run — 加 --apply 执行", "# dry-run — add --apply to execute"))
         return
     }
 
@@ -466,14 +564,19 @@ private fun cmdSetup(raw: List<String>) {
     if (adb != null) {
         println("  adb       $adb")
     } else {
-        println("  adb       未找到")
-        if (!autoYes && !confirm("  下载 Android platform-tools（约 15 MB）? [Y/n] ")) {
+        println(t("  adb       未找到", "  adb       not found"))
+        if (!autoYes && !confirm(t("  下载 Android platform-tools（约 15 MB）? [Y/n] ", "  download Android platform-tools (~15 MB)? [Y/n] "))) {
             println(Guidance.adbMissing())
         } else {
-            print("  下载中 ")
+            print(t("  下载中 ", "  downloading "))
             val path = Setup.installAdb { read, total -> renderDownload(read, total) }
             println()
-            if (path == null) throw NoirException("adb 下载失败。", "检查网络后重试。")
+            if (path == null) {
+                throw NoirException(
+                    t("adb 下载失败。", "adb download failed."),
+                    t("检查网络后重试。", "Check the network and retry.")
+                )
+            }
             println("  adb       $path")
         }
     }
@@ -482,20 +585,25 @@ private fun cmdSetup(raw: List<String>) {
     if (jadx != null) {
         println("  jadx      $jadx")
     } else {
-        println("  jadx      未找到（只有 deep 命令需要）")
-        if (!autoYes && !confirm("  下载 jadx（约 73 MB）? [Y/n] ")) {
+        println(t("  jadx      未找到（只有 deep 命令需要）", "  jadx      not found (only needed by deep)"))
+        if (!autoYes && !confirm(t("  下载 jadx（约 73 MB）? [Y/n] ", "  download jadx (~73 MB)? [Y/n] "))) {
             println(Guidance.jadxMissing())
         } else {
-            print("  下载中 ")
+            print(t("  下载中 ", "  downloading "))
             val path = Setup.installJadx { read, total -> renderDownload(read, total) }
             println()
-            if (path == null) throw NoirException("jadx 下载失败。", "检查网络后重试。")
+            if (path == null) {
+                throw NoirException(
+                    t("jadx 下载失败。", "jadx download failed."),
+                    t("检查网络后重试。", "Check the network and retry.")
+                )
+            }
             println("  jadx      $path")
         }
     }
 
     println()
-    println("完成。下一步：noir doctor")
+    println(t("完成。下一步：noir doctor", "done. Next: noir doctor"))
 }
 
 private fun cmdDoctor(raw: List<String>) {
@@ -506,7 +614,7 @@ private fun cmdDoctor(raw: List<String>) {
 
     val adbPath = Platform.findAdb(args.value("adb"))
     if (adbPath == null) {
-        println("  adb       未找到")
+        println(t("  adb       未找到", "  adb       not found"))
         println(Guidance.adbMissing())
         return
     }
@@ -517,8 +625,9 @@ private fun cmdDoctor(raw: List<String>) {
         ?.let { println("            $it") }
 
     val devices = adb.devices()
+    devices.firstOrNull { it.state == "device" }?.let { applyDeviceLanguage(adb, it) }
     if (devices.isEmpty()) {
-        println("  device    未连接")
+        println(t("  device    未连接", "  device    not connected"))
         println()
         println(Guidance.deviceGuide())
     } else {
@@ -530,7 +639,11 @@ private fun cmdDoctor(raw: List<String>) {
     }
 
     val jadx = Platform.findJadx(args.value("jadx"))
-    if (jadx == null) println("  jadx      未找到（只有 deep 需要）") else println("  jadx      $jadx")
+    if (jadx == null) {
+        println(t("  jadx      未找到（只有 deep 需要）", "  jadx      not found (only needed by deep)"))
+    } else {
+        println("  jadx      $jadx")
+    }
 }
 
 private fun confirm(prompt: String): Boolean {
@@ -544,6 +657,7 @@ private fun confirm(prompt: String): Boolean {
 private fun performScan(args: Args): ScanResult {
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
+    applyDeviceLanguage(adb, device)
     val outDir = File(args.value("out") ?: "noir-out").apply { mkdirs() }
     val minScore = args.value("min")?.toIntOrNull() ?: 0
     val limit = args.value("limit")?.toIntOrNull() ?: 500
@@ -646,9 +760,15 @@ private fun readReportMeta(adb: Adb, device: Device, android: String): ReportMet
 }
 
 private fun writeReports(result: ScanResult, recommendations: List<Recommendation>) {
-    File(result.outDir, "report.json").writeText(Report.json(result.device, result.apps, recommendations, result.meta))
-    File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations, result.meta))
-    File(result.outDir, "report.html").writeText(Report.html(result.device, result.apps, recommendations, result.meta))
+    File(result.outDir, "report.json").writeText(
+        Report.json(result.device, result.apps, recommendations, result.meta, LANG)
+    )
+    File(result.outDir, "report.md").writeText(
+        Report.markdown(result.device, result.apps, recommendations, result.meta, LANG)
+    )
+    File(result.outDir, "report.html").writeText(
+        Report.html(result.device, result.apps, recommendations, result.meta, LANG)
+    )
     writeDomainFiles(result.outDir, result.apps)
     val effective = effectiveActions(result.adb, result, recommendations)
     File(result.outDir, "plan.txt").writeText(
@@ -908,7 +1028,8 @@ private fun renderDashboard(args: Args, result: ScanResult, recommendations: Lis
         host = Platform.describe(),
         installed = result.installed,
         ascii = ascii,
-        color = color
+        color = color,
+        lang = LANG
     )
 }
 
@@ -974,19 +1095,31 @@ private fun cmdDeepScan(raw: List<String>) {
     val targets = if (args.flag("all")) scan.apps else scan.apps.take(top)
 
     if (targets.isEmpty()) {
-        println("没有被标记的应用，不需要 DeepScan。")
+        println(t("没有被标记的应用，不需要 DeepScan。", "no flagged apps; DeepScan is not needed."))
         return
     }
 
     val jadxBin = Platform.findJadx(args.value("jadx"))
-        ?: throw NoirException("没有找到 jadx。", Guidance.jadxMissing())
+        ?: throw NoirException(t("没有找到 jadx。", "jadx was not found."), Guidance.jadxMissing())
 
     println()
     println("== DeepScan ==")
-    println("  目标    ${targets.size} 个应用（共 ${scan.apps.size} 个被标记）")
-    println("  并行    $jobs 个 jadx 进程")
-    println("  输出    ${outDir.absolutePath}")
-    if (args.flag("all")) println("  注意    --all 会反编译所有被标记应用，可能耗时数小时、占用数 GB")
+    println(
+        t(
+            "  目标    ${targets.size} 个应用（共 ${scan.apps.size} 个被标记）",
+            "  targets   ${targets.size} apps (${scan.apps.size} flagged in total)"
+        )
+    )
+    println(t("  并行    $jobs 个 jadx 进程", "  jobs      $jobs jadx processes"))
+    println(t("  输出    ${outDir.absolutePath}", "  output    ${outDir.absolutePath}"))
+    if (args.flag("all")) {
+        println(
+            t(
+                "  注意    --all 会反编译所有被标记应用，可能耗时数小时、占用数 GB",
+                "  note      --all decompiles every flagged app; this can take hours and several GB"
+            )
+        )
+    }
     println()
 
     val pool = Executors.newFixedThreadPool(jobs)
@@ -1176,7 +1309,7 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
     val high = findings.filter { it.codeRisk >= 8 && it.error == null }
     if (high.isEmpty()) {
         println()
-        println("没有代码级高风险项，不需要额外清理。")
+        println(t("没有代码级高风险项，不需要额外清理。", "no high-risk code findings; no extra cleanup is needed."))
         return
     }
 
@@ -1185,33 +1318,43 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
     val recommendations = effectiveRecommendations(
         adb,
         scan,
-        Advisor.advise(scan.apps).filter { it.pkg in highPkgs }
+        Advisor.advise(scan.apps, LANG).filter { it.pkg in highPkgs }
     )
     val planned = effectiveActions(adb, scan, recommendations)
 
     println()
-    println("== 代码级高风险 ${high.size} 个 ==")
+    println(t("== 代码级高风险 ${high.size} 个 ==", "== high-risk code findings: ${high.size} =="))
     high.forEach { f ->
         val system = appsByPkg[f.pkg]?.isSystem ?: true
         println("  %-44s risk %2d  %s".format(f.pkg, f.codeRisk, if (system) "system" else "user"))
     }
-    println("  可执行的安全 appops: ${planned.size} 条")
+    println(t("  可执行的安全 appops: ${planned.size} 条", "  safe app-ops available: ${planned.size}"))
 
     if (!args.flag("apply")) {
         println()
-        println("[*] dry-run — 加 --apply 执行安全清理；加 --purge 可同时卸载高风险用户应用")
+        println(
+            t(
+                "[*] dry-run — 加 --apply 执行安全清理；加 --purge 可同时卸载高风险用户应用",
+                "[*] dry-run — add --apply for safe cleanup; add --purge to uninstall high-risk user apps"
+            )
+        )
         return
     }
 
     if (!args.flag("yes")) {
         if (!isInteractive()) {
-            println("[!] --apply 在非交互环境下需要同时加 --yes")
+            println(
+                t(
+                    "[!] --apply 在非交互环境下需要同时加 --yes",
+                    "[!] --apply needs --yes when stdin is not interactive"
+                )
+            )
             return
         }
-        print("执行这 ${planned.size} 条 appops? [y/N] ")
+        print(t("执行这 ${planned.size} 条 appops? [y/N] ", "apply these ${planned.size} app-ops? [y/N] "))
         val answer = readLine()?.trim()?.lowercase()
         if (answer != "y" && answer != "yes") {
-            println("已跳过。")
+            println(t("已跳过。", "skipped."))
             return
         }
     }
@@ -1221,15 +1364,15 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
 
     val userHigh = high.filter { appsByPkg[it.pkg]?.isSystem == false }
     if (userHigh.isEmpty()) {
-        println("高风险项里没有用户应用，无需卸载。")
+        println(t("高风险项里没有用户应用，无需卸载。", "no high-risk user apps; nothing to uninstall."))
         return
     }
     println()
-    println("== 卸载高风险用户应用 ==")
-    println("# 恢复命令：adb shell pm install-existing --user 0 <package>")
+    println(t("== 卸载高风险用户应用 ==", "== uninstall high-risk user apps =="))
+    println(t("# 恢复命令：adb shell pm install-existing --user 0 <package>", "# restore: adb shell pm install-existing --user 0 <package>"))
     userHigh.forEach { f ->
         if (!args.flag("yes") && isInteractive()) {
-            print("  卸载 ${f.pkg}? [y/N] ")
+            print(t("  卸载 ${f.pkg}? [y/N] ", "  uninstall ${f.pkg}? [y/N] "))
             val answer = readLine()?.trim()?.lowercase()
             if (answer != "y" && answer != "yes") return@forEach
         }
@@ -1246,10 +1389,13 @@ private fun isInteractive(): Boolean =
 private fun connectAdb(args: Args): Adb {
     val explicit = args.value("adb")
     if (explicit != null && !File(explicit).exists()) {
-        throw NoirException("指定的 adb 不存在：$explicit", "检查路径，或运行 noir setup 自动安装。")
+        throw NoirException(
+            t("指定的 adb 不存在：$explicit", "adb not found at: $explicit"),
+            t("检查路径，或运行 noir setup 自动安装。", "Check the path, or run noir setup to install it.")
+        )
     }
     val bin = Platform.findAdb(explicit)
-        ?: throw NoirException("没有找到 adb。", Guidance.adbMissing())
+        ?: throw NoirException(t("没有找到 adb。", "adb was not found."), Guidance.adbMissing())
     return Adb(bin)
 }
 
@@ -1265,8 +1411,11 @@ private fun awaitDevice(adb: Adb, requested: String?, interactive: Boolean): Dev
             online.firstOrNull { it.serial == requested }?.let { return it }
             if (online.isNotEmpty()) {
                 throw NoirException(
-                    "没有找到设备 $requested。",
-                    "当前已连接：" + online.joinToString { "${it.serial} (${it.model})" }
+                    t("没有找到设备 $requested。", "device not found: $requested"),
+                    t(
+                        "当前已连接：" + online.joinToString { "${it.serial} (${it.model})" },
+                        "Connected now: " + online.joinToString { "${it.serial} (${it.model})" }
+                    )
                 )
             }
         } else if (online.size == 1) {
@@ -1276,19 +1425,28 @@ private fun awaitDevice(adb: Adb, requested: String?, interactive: Boolean): Dev
             val physical = online.filterNot { it.serial.startsWith("emulator-") }
             if (physical.size == 1) return physical.first()
 
+            applyDeviceLanguage(adb, online.first())
             if (interactive) {
-                println("检测到多台设备：")
+                println(t("检测到多台设备：", "multiple devices detected:"))
                 online.forEachIndexed { index, device ->
                     println("  ${index + 1}) ${device.serial}  ${device.model}")
                 }
-                print("选择设备 [1-${online.size}] ")
+                print(t("选择设备 [1-${online.size}] ", "choose a device [1-${online.size}] "))
                 val choice = readLine()?.trim()?.toIntOrNull()
                 if (choice != null && choice in 1..online.size) return online[choice - 1]
-                throw NoirException("没有选择设备。", "用 --serial <id> 指定要扫描的设备。")
+                throw NoirException(
+                    t("没有选择设备。", "no device selected."),
+                    t("用 --serial <id> 指定要扫描的设备。", "Use --serial <id> to choose the device to scan.")
+                )
             }
 
             val chosen = physical.firstOrNull() ?: online.first()
-            println("提示：检测到 ${online.size} 台设备，使用 ${chosen.serial}；可用 --serial 指定。")
+            println(
+                t(
+                    "提示：检测到 ${online.size} 台设备，使用 ${chosen.serial}；可用 --serial 指定。",
+                    "note: ${online.size} devices detected; using ${chosen.serial}. Use --serial to choose."
+                )
+            )
             return chosen
         }
 
@@ -1300,13 +1458,25 @@ private fun awaitDevice(adb: Adb, requested: String?, interactive: Boolean): Dev
 
         if (!interactive) {
             throw NoirException(
-                "没有可用设备。",
-                if (unauthorized) Guidance.unauthorizedGuide() else "插上手机后重新运行，或先运行 noir doctor。"
+                t("没有可用设备。", "no usable device."),
+                if (unauthorized) {
+                    Guidance.unauthorizedGuide()
+                } else {
+                    t(
+                        "插上手机后重新运行，或先运行 noir doctor。",
+                        "Plug in the phone and retry, or run noir doctor first."
+                    )
+                }
             )
         }
-        if (waited >= 180) throw NoirException("等了 180 秒仍然没有设备。", Guidance.deviceGuide())
+        if (waited >= 180) {
+            throw NoirException(
+                t("等了 180 秒仍然没有设备。", "no device appeared after 180 seconds."),
+                Guidance.deviceGuide()
+            )
+        }
 
-        print("\r  等待设备接入 ... ${180 - waited}s   ")
+        print(t("\r  等待设备接入 ... ${180 - waited}s   ", "\r  waiting for a device ... ${180 - waited}s   "))
         System.out.flush()
         Thread.sleep(2000)
         waited += 2
@@ -1323,13 +1493,20 @@ private class Args(raw: List<String>) {
         while (i < raw.size) {
             val arg = raw[i]
             if (arg.startsWith("--")) {
-                val name = arg.substring(2)
-                val takesValue = name !in BOOLEAN_FLAGS && i + 1 < raw.size && !raw[i + 1].startsWith("--")
-                if (takesValue) {
-                    values[name] = raw[i + 1]
-                    i++
+                val body = arg.substring(2)
+                val equals = body.indexOf('=')
+                if (equals > 0) {
+                    val name = body.substring(0, equals)
+                    val value = body.substring(equals + 1)
+                    if (name in BOOLEAN_FLAGS || value.isEmpty()) flags.add(name) else values[name] = value
                 } else {
-                    flags.add(name)
+                    val takesValue = body !in BOOLEAN_FLAGS && i + 1 < raw.size && !raw[i + 1].startsWith("--")
+                    if (takesValue) {
+                        values[body] = raw[i + 1]
+                        i++
+                    } else {
+                        flags.add(body)
+                    }
                 }
             } else {
                 positional.add(arg)

@@ -207,6 +207,7 @@ cli/build/install/noir/bin/noir.bat    # Windows
 - `--no-color` / `--color`：关闭或强制 ANSI 颜色（默认按是否为 TTY 自动判断）
 - `--quiet`：只留仪表盘，不打印扫描过程
 - `--no-clear`：不清屏（方便把输出重定向到文件）
+- `--lang <auto|zh|en>`：界面语言。默认按手机系统语言切换；没有设备时按电脑系统语言；`NOIR_LANG` 环境变量也可以指定
 
 ## 用法
 
@@ -229,6 +230,7 @@ noir block com.example.app --apply
 
 | 参数 | 说明 |
 |---|---|
+| `--lang <auto|zh|en>` | 界面语言（默认跟随设备语言） |
 | `--serial <id>` | 指定设备 |
 | `--out <dir>` | 输出目录（默认 `noir-out`） |
 | `--min <score>` | 只保留分数 ≥ N 的应用 |

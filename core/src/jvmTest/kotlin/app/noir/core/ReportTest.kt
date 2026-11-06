@@ -78,6 +78,52 @@ class ReportTest {
     }
 
     @Test
+    fun `english report is fully translated and keeps stable keys`() {
+        val entry = AppEntry(
+            pkg = "com.example",
+            uid = "1",
+            isSystem = false,
+            debuggable = false,
+            installer = null,
+            permissions = listOf("INTERNET", "READ_SMS"),
+            endpoints = listOf("https://tracker.example.com/upload"),
+            score = 30,
+            category = Category.TELEMETRY,
+            vendor = "Example"
+        )
+        val recommendation = Recommendation(
+            pkg = "com.example",
+            action = ActionType.APPOP_USAGE_STATS,
+            risk = "MED",
+            reason = "system telemetry component can read app usage statistics",
+            autoSafe = true
+        )
+        val meta = ReportMeta(
+            tool = "NOIR test",
+            host = "macOS aarch64",
+            android = "16",
+            sdk = "36",
+            build = "build",
+            fingerprint = "fingerprint",
+            user = "0",
+            generatedAt = "2026-11-06T00:00:00Z"
+        )
+        val device = Device("s", "device", "PLK110", "product")
+        val json = Report.json(device, listOf(entry), listOf(recommendation), meta, Lang.EN)
+        val md = Report.markdown(device, listOf(entry), listOf(recommendation), meta, Lang.EN)
+        val html = Report.html(device, listOf(entry), listOf(recommendation), meta, Lang.EN)
+
+        val han = Regex("[\\u4e00-\\u9fff]")
+        listOf(json, md, html).forEach { text ->
+            assertTrue(!han.containsMatchIn(text), "untranslated report output")
+        }
+        assertTrue(json.contains("\"category\": \"telemetry\""))
+        assertTrue(json.contains("\"categoryKey\": \"TELEMETRY\""))
+        assertTrue(json.contains("\"actionKey\": \"APPOP_USAGE_STATS\""))
+        assertTrue(html.contains("<html lang=\"en\">"))
+    }
+
+    @Test
     fun `markdown contains the report table header`() {
         val entry = AppEntry(
             pkg = "com.example",

@@ -5,6 +5,9 @@
  */
 package app.noir.cli
 
+import app.noir.core.Category
+import app.noir.core.Lang
+import app.noir.core.localized
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -17,7 +20,8 @@ internal data class ReportApp(
     val score: Int,
     val category: String,
     val permissions: List<String>,
-    val endpoints: List<String>
+    val endpoints: List<String>,
+    val categoryKey: String? = null
 )
 
 internal data class ReportSnapshot(
@@ -36,9 +40,17 @@ internal data class AppChange(val old: ReportApp, val new: ReportApp) {
     val addedEndpoints: List<String> get() = new.endpoints - old.endpoints.toSet()
     val removedEndpoints: List<String> get() = old.endpoints - new.endpoints.toSet()
     val changed: Boolean
-        get() = scoreDelta != 0 || new.category != old.category ||
+        get() = scoreDelta != 0 || !sameCategory ||
             addedPermissions.isNotEmpty() || removedPermissions.isNotEmpty() ||
             addedEndpoints.isNotEmpty() || removedEndpoints.isNotEmpty()
+
+    /** Localized labels may differ between a Chinese and an English report. */
+    private val sameCategory: Boolean
+        get() {
+            val oldKey = stableCategory(old)
+            val newKey = stableCategory(new)
+            return if (oldKey != null && newKey != null) oldKey == newKey else old.category == new.category
+        }
 }
 
 internal data class DiffResult(
@@ -54,6 +66,12 @@ internal data class DiffResult(
             it.scoreDelta > 0 || it.addedPermissions.isNotEmpty() || it.addedEndpoints.isNotEmpty()
         }
 }
+
+/** Old reports have no categoryKey; map their label back to the stable enum. */
+private fun stableCategory(app: ReportApp): String? =
+    app.categoryKey ?: Category.entries.firstOrNull {
+        it.localized(Lang.ZH) == app.category || it.localized(Lang.EN).equals(app.category, ignoreCase = true)
+    }?.name
 
 private fun JsonObject.string(key: String, fallback: String = ""): String =
     get(key)?.takeIf { !it.isJsonNull }?.asString ?: fallback
@@ -82,7 +100,8 @@ internal fun readReport(path: String): ReportSnapshot {
             score = app.number("score"),
             category = app.string("category", "—"),
             permissions = app.stringList("permissions").sorted(),
-            endpoints = app.stringList("endpoints").sorted()
+            endpoints = app.stringList("endpoints").sorted(),
+            categoryKey = app.string("categoryKey").ifBlank { null }
         )
     }.filter { it.pkg.isNotBlank() }.associateBy { it.pkg }
 
@@ -175,6 +194,7 @@ private fun appJson(app: ReportApp): JsonObject = JsonObject().apply {
     addProperty("package", app.pkg)
     addProperty("score", app.score)
     addProperty("category", app.category)
+    app.categoryKey?.let { addProperty("categoryKey", it) }
     add("permissions", JsonArray().apply { app.permissions.forEach { add(it) } })
     add("endpoints", JsonArray().apply { app.endpoints.forEach { add(it) } })
 }
@@ -195,6 +215,8 @@ internal fun renderDiffJson(result: DiffResult): String {
         result.changed.forEach { change ->
             add(JsonObject().apply {
                 addProperty("package", change.pkg)
+                change.old.categoryKey?.let { addProperty("oldCategoryKey", it) }
+                change.new.categoryKey?.let { addProperty("newCategoryKey", it) }
                 addProperty("oldScore", change.old.score)
                 addProperty("newScore", change.new.score)
                 addProperty("delta", change.scoreDelta)
