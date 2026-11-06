@@ -215,6 +215,7 @@ noir --about              # 它是什么、会写什么、许可
 noir --version
 noir devices
 noir scan                 # 全量扫描，输出 JSON / Markdown / 域名清单
+noir diff old/report.json new/report.json   # 对比两次扫描
 noir ui                   # 扫描并渲染仪表盘
 noir auto                 # 扫描 + 分类 + 生成处置计划（dry-run）
 noir auto --apply         # 执行安全的 appops 动作（可回滚）
@@ -235,6 +236,20 @@ noir block com.example.app --apply
 | `--only <regex>` | 只扫描匹配的包名，例如 `--only 'com\.miui\.'` |
 | `--adb <path>` / `--jadx <path>` | 手动指定工具路径 |
 | `--yes` | 自动化场景下跳过确认 |
+
+## 对比两次扫描
+
+`noir diff` 读取两份 `report.json`，比较应用、分数、权限和端点：
+
+```bash
+noir diff noir-out-before noir-out-after
+noir diff old/report.json new/report.json --json
+noir diff old/report.json new/report.json --fail-on-regression
+```
+
+输出会分成 `added` / `removed` / `changed`，并标出新增权限和新增端点。
+`--fail-on-regression` 会在出现新应用、分数上升、新增权限或新增端点时返回退出码 1，
+适合放进 CI 或定期审计脚本。
 
 ## DeepScan：一条命令反编译 + 处置
 
@@ -356,7 +371,8 @@ IP、`localhost` 和带 `test`/`staging` 的域名会被自动剔除。
 - [ ] 规则文件可配置（YAML），支持社区规则包
 - [ ] 与 `apktool` / `jadx` 的批量流水线
 - [ ] 设备端 DNS/VPN 拦截方案导出
-- [ ] 扫描结果签名与版本对比
+- [x] 扫描结果版本对比（`noir diff`）
+- [ ] 扫描结果签名
 
 ## 免责声明
 

@@ -40,7 +40,7 @@ private val VERSION: String =
 
 private val BOOLEAN_FLAGS = setOf(
     "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear",
-    "all", "purge"
+    "all", "purge", "json", "fail-on-regression"
 )
 
 private var QUIET = false
@@ -80,6 +80,7 @@ private fun runMain(args: Array<String>) {
     when (val command = args[0]) {
         "devices" -> cmdDevices(args.drop(1))
         "scan" -> cmdScan(args.drop(1))
+        "diff" -> cmdDiff(args.drop(1))
         "auto" -> cmdAuto(args.drop(1))
         "ui" -> cmdUi(args.drop(1))
         "deep" -> cmdDeep(args.drop(1))
@@ -115,6 +116,7 @@ private fun usage() {
           noir setup                          download missing tools into ~/.noir/tools
           noir devices                        list connected devices
           noir scan [options]                 inventory apps, permissions and endpoints
+          noir diff <old> <new> [options]     compare two report.json files
           noir auto [options]                 scan + classify + plan
           noir ui [options]                   same, rendered as a dashboard
           noir deep <package> [options]       pull one APK, run jadx, grep for red flags
@@ -129,6 +131,10 @@ private fun usage() {
           --only <regex>     restrict scanning to matching package names
           --adb <path>       override adb binary
           --jadx <path>      override jadx binary
+
+        diff:
+          --json                  emit a machine-readable diff
+          --fail-on-regression    exit 1 when apps, scores, permissions or endpoints increase
 
         auto / deepscan:
           --apply            execute the safe, reversible app-ops actions
@@ -283,6 +289,30 @@ private fun cmdScan(raw: List<String>) {
     }
     println()
     println(Tui.clip("[+] ${result.outDir.absolutePath}"))
+}
+
+private fun cmdDiff(raw: List<String>) {
+    val args = Args(raw)
+    if (args.positional.size != 2) {
+        throw NoirException(
+            "用法：noir diff <old-report.json> <new-report.json>",
+            "也可以直接传两个扫描输出目录，例如 noir diff noir-out-old noir-out-new。"
+        )
+    }
+
+    fun reportFile(path: String): File {
+        val file = File(path)
+        return if (file.isDirectory) File(file, "report.json") else file
+    }
+
+    val oldFile = reportFile(args.positional[0])
+    val newFile = reportFile(args.positional[1])
+    if (!oldFile.isFile) throw NoirException("找不到旧报告：${oldFile.path}", "先运行 noir scan --out <dir>。")
+    if (!newFile.isFile) throw NoirException("找不到新报告：${newFile.path}", "先运行 noir scan --out <dir>。")
+
+    val result = diffReports(readReport(oldFile.path), readReport(newFile.path))
+    println(if (args.flag("json")) renderDiffJson(result) else renderDiff(result))
+    if (args.flag("fail-on-regression") && result.regressions) exitProcess(1)
 }
 
 private fun cmdAuto(raw: List<String>) {

@@ -62,6 +62,7 @@ object Guidance {
             "noir" to "guided first run",
             "noir doctor" to "environment check",
             "noir scan" to "inventory + report",
+            "noir diff a b" to "compare two reports",
             "noir ui" to "dashboard",
             "noir auto" to "plan (+ --apply)",
             "noir deep <pkg>" to "jadx dive",
