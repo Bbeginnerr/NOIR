@@ -4,7 +4,7 @@ plugins {
 }
 
 // Override in CI: ./gradlew :cli:installDist -PnoirVersion=0.2.0
-val noirVersion = providers.gradleProperty("noirVersion").orElse("0.2.6")
+val noirVersion = providers.gradleProperty("noirVersion").orElse("0.2.7")
 version = noirVersion.get()
 
 tasks.jar {

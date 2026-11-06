@@ -142,7 +142,7 @@ private fun usage() {
 
         display:
           --ascii            plain ASCII borders (legacy Windows console)
-          --color            force ANSI colour (auto-detected on a TTY)
+          --color            force ANSI colour (auto-detected on a TTY; off on legacy cmd.exe)
           --no-color         disable ANSI colour
           --quiet            suppress scan progress
           --no-clear         do not clear the screen before the dashboard
@@ -800,10 +800,27 @@ internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpActi
     }
 }
 
+internal fun ansiSupported(
+    windows: Boolean = Platform.isWindows,
+    env: Map<String, String> = System.getenv()
+): Boolean {
+    if (windows) {
+        return !env["WT_SESSION"].isNullOrBlank() ||
+            !env["TERM_PROGRAM"].isNullOrBlank() ||
+            !env["ANSICON"].isNullOrBlank() ||
+            env["ConEmuANSI"].equals("ON", ignoreCase = true) ||
+            (!env["TERM"].isNullOrBlank() && !env["TERM"].equals("dumb", ignoreCase = true))
+    }
+    return !env["TERM"].equals("dumb", ignoreCase = true)
+}
+
 private fun renderDashboard(args: Args, result: ScanResult, recommendations: List<Recommendation>): String {
-    val color = (args.flag("color") || System.console() != null) &&
-        !args.flag("no-color") &&
-        !args.flag("ascii")
+    val ascii = args.flag("ascii")
+    val forceColor = args.flag("color")
+    val noColor = args.flag("no-color") || System.getenv("NO_COLOR") != null
+    val color = !ascii && (
+        forceColor || (System.console() != null && !noColor && ansiSupported())
+    )
     return Tui.dashboard(
         device = result.device,
         apps = result.apps,
@@ -811,7 +828,7 @@ private fun renderDashboard(args: Args, result: ScanResult, recommendations: Lis
         android = result.android,
         host = Platform.describe(),
         installed = result.installed,
-        ascii = args.flag("ascii"),
+        ascii = ascii,
         color = color
     )
 }

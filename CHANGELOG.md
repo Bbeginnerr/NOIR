@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-11-06
+
+### Fixed
+
+- **legacy Windows console** — ANSI colour is no longer emitted when stdout is
+  a classic `cmd.exe`/conhost window. This prevents raw `←[38;2;…m` sequences
+  from flooding the dashboard; `--color` still forces colour, and Windows
+  Terminal / VS Code / ANSI-enabled shells are detected automatically.
+
 ## [0.2.6] — 2026-11-04
 
 ### Fixed
