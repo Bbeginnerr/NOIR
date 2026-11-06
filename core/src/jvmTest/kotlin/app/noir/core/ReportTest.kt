@@ -49,6 +49,35 @@ class ReportTest {
     }
 
     @Test
+    fun `html report escapes app data and stays self contained`() {
+        val entry = AppEntry(
+            pkg = "com.example.<script>",
+            uid = "1",
+            isSystem = false,
+            debuggable = false,
+            installer = null,
+            permissions = listOf("INTERNET", "READ_SMS"),
+            endpoints = listOf("https://example.com/<x>"),
+            score = 35,
+            category = Category.TELEMETRY,
+            vendor = "Example & Co"
+        )
+        val meta = ReportMeta(
+            tool = "NOIR test",
+            android = "16",
+            sdk = "36",
+            user = "0",
+            generatedAt = "2026-11-06T00:00:00Z"
+        )
+        val html = Report.html(Device("s", "device", "PLK110"), listOf(entry), meta = meta)
+        assertTrue(html.contains("&lt;script&gt;"))
+        assertTrue(html.contains("Example &amp; Co"))
+        assertTrue(html.contains("report.html") || html.contains("<title>NOIR report"))
+        assertTrue(!html.contains("https://fonts."))
+        assertTrue(html.contains("data-search="))
+    }
+
+    @Test
     fun `markdown contains the report table header`() {
         val entry = AppEntry(
             pkg = "com.example",

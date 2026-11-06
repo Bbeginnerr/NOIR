@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **offline HTML report** — every scan now writes a self-contained
+  `report.html` with environment details, category exposure, top findings,
+  recommendations, searchable app cards and shared-UID groups. No external
+  assets, fonts or network calls.
+
 ## [0.3.0] — 2026-11-06
 
 ### Added

@@ -647,6 +647,7 @@ private fun readReportMeta(adb: Adb, device: Device, android: String): ReportMet
 private fun writeReports(result: ScanResult, recommendations: List<Recommendation>) {
     File(result.outDir, "report.json").writeText(Report.json(result.device, result.apps, recommendations, result.meta))
     File(result.outDir, "report.md").writeText(Report.markdown(result.device, result.apps, recommendations, result.meta))
+    File(result.outDir, "report.html").writeText(Report.html(result.device, result.apps, recommendations, result.meta))
     writeDomainFiles(result.outDir, result.apps)
     File(result.outDir, "plan.txt").writeText(
         plannedCommands(recommendations, result.meta.user).joinToString("\n", postfix = "\n")
