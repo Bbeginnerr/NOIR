@@ -71,3 +71,10 @@ jobs:
           name: noir-${{ runner.os }}
           path: cli/build/install/noir
           if-no-files-found: error
+
+      # Basic caching tars Gradle User Home without stopping the daemon first;
+      # on Windows the daemon's lock files then make the cache save fail.
+      - name: Stop Gradle daemons
+        if: always()
+        shell: bash
+        run: ./gradlew --stop || true
