@@ -13,7 +13,10 @@
 [![release](https://img.shields.io/github/v/release/Verlintas/NOIR)](https://github.com/Verlintas/NOIR/releases)
 [![license](https://img.shields.io/github/license/Verlintas/NOIR)](LICENSE)
 ![platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-2ea44f)
+
 [![AtomGit G-Star](https://atomgit.com/Verlintas/NOIR/star/new_badge.svg)](https://atomgit.com/Verlintas/NOIR)
+<a href="https://trendshift.io/repositories/330705?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-330705" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/330705/daily?language=Kotlin" alt="Verlintas/NOIR | Trendshift" width="250" height="55"></a>
+<a href="https://upstar.dev/r/Verlintas/NOIR"><picture><source media="(prefers-color-scheme: dark)" srcset="https://upstar.dev/badge/Verlintas/NOIR/award/cli-tools-dark.svg"><img alt="Upstar: #1 Riser Of The Week in CLI tools, November 2026" src="https://upstar.dev/badge/Verlintas/NOIR/award/cli-tools.svg" width="250" height="55"></picture></a>
 
 **把「这台手机到底能泄露什么」变成一份可复现的报告。**
 
