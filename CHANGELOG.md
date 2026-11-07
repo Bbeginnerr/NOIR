@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-11-07
+
+**Security and safety release. All users of 0.4.1 or earlier should update.**
+
 ### Fixed
 
 - **destructive option parsing** — `--apply=false`, `--yes=false` and
@@ -35,7 +39,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **release** — tagged releases run tests, build Intel and arm64 macOS
   packages, derive a valid jpackage bundle version from the tag, include
   LICENSE, and grant write permissions only to the publish job.
-- **site/docs** — demo matches the 0.4.1 flow, English/Chinese labels are
+- **site/docs** — demo matches the current flow, English/Chinese labels are
   separated, PWA manifest is locale-aware, and README/SECURITY/contributor
   instructions match the code.
 
