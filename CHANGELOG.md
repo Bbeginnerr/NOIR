@@ -5,6 +5,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **destructive option parsing** — `--apply=false`, `--yes=false` and
+  `--purge=false` are now treated as false, unknown options fail fast, and
+  missing values are rejected instead of silently changing command behaviour.
+- **rollback safety** — `rollback.txt` is written only by a successful apply,
+  includes the device serial, preserves earlier entries, and is no longer
+  erased by a later scan or dry run. AppOps failures now exit nonzero.
+- **`noir block`** — no longer emits the obsolete `PROJECT_MEDIA` no-op or
+  AppOps after a per-user uninstall; it writes a concrete rollback file and
+  validates package names.
+- **timeouts and extraction** — adb/jadx commands have real deadlines, and the
+  tool downloader rejects non-HTTPS redirects and zip-slip paths.
+- **scan correctness** — split APKs and `classes16.dex`+ are scanned, failed
+  pulls are not cached as empty results, the endpoint cache is device-scoped,
+  and stale DeepScan APKs/reports are refreshed.
+- **detection** — `Runtime.getRuntime().exec` is detected, upload paths include
+  stats/logs/tracking/analytics, coarse location and legacy storage are
+  sensitive, domain classification no longer treats `static`/`biometrics`/
+  `soundtrack` as trackers, and manifest/AXML/Dumpsys parsing handles
+  permissions, defaults, legacy UIDs and malformed input.
+- **reports and diff** — stable `leaksByType` keys, upload-host deduplication,
+  escaped Markdown/HTML fields, schema validation, recorded scan filters and
+  rollback/failure semantics.
+- **CLI/UI** — global flags work before commands, `--help` no longer runs a
+  scan, invalid regex/numeric options fail fast, ASCII mode covers guidance
+  and progress, and 40/50-column/CJK layouts are tested.
+- **release** — tagged releases run tests, build Intel and arm64 macOS
+  packages, derive a valid jpackage bundle version from the tag, include
+  LICENSE, and grant write permissions only to the publish job.
+- **site/docs** — demo matches the 0.4.1 flow, English/Chinese labels are
+  separated, PWA manifest is locale-aware, and README/SECURITY/contributor
+  instructions match the code.
+
 ## [0.4.1] — 2026-11-06
 
 ### Added
@@ -200,7 +234,7 @@ upgraded release pipeline.
 - shared-UID aware `dumpsys package` parser (system-uid permissions live in a separate section)
 - endpoint cache keyed by package + APK path
 - cross-platform CI on Ubuntu, macOS and Windows
-- release workflow producing signed-checksum zip archives per OS
+- release workflow producing SHA-256 checksum files alongside zip archives per OS
 
 ### Known limits
 

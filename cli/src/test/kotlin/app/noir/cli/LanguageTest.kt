@@ -81,6 +81,22 @@ class LanguageTest {
     }
 
     @Test
+    fun `ascii mode removes box glyphs from guidance`() {
+        ASCII = true
+        try {
+            val about = Guidance.about("0.4.1")
+            val error = Guidance.error("x")
+            val guide = Guidance.deviceGuide(Lang.EN)
+            assertFalse(about.contains("╭"))
+            assertFalse(error.contains("╭"))
+            assertFalse(guide.contains("╭"))
+            assertFalse(about.contains("█"))
+        } finally {
+            ASCII = false
+        }
+    }
+
+    @Test
     fun `english guidance has no chinese characters`() {
         val blocks = listOf(
             Guidance.deviceGuide(Lang.EN),

@@ -22,8 +22,8 @@ object Platform {
     fun describe(): String = "${System.getProperty("os.name")} ${System.getProperty("os.arch")}"
 
     fun findAdb(explicit: String? = null): String? {
-        explicit?.let { return it }
-        System.getenv("ADB")?.takeIf { it.isNotBlank() }?.let { return it }
+        explicit?.let { return it.takeIf(::usable) }
+        System.getenv("ADB")?.takeIf { it.isNotBlank() }?.takeIf(::usable)?.let { return it }
         which("adb")?.let { return it }
 
         val home = System.getProperty("user.home")
@@ -51,12 +51,12 @@ object Platform {
                 }
             }
         }
-        return candidates.firstOrNull { File(it).canExecute() }
+        return candidates.firstOrNull(::usable)
     }
 
     fun findJadx(explicit: String? = null): String? {
-        explicit?.let { return it }
-        System.getenv("JADX")?.takeIf { it.isNotBlank() }?.let { return it }
+        explicit?.let { return it.takeIf(::usable) }
+        System.getenv("JADX")?.takeIf { it.isNotBlank() }?.takeIf(::usable)?.let { return it }
         which("jadx")?.let { return it }
 
         val home = System.getProperty("user.home")
@@ -81,8 +81,10 @@ object Platform {
                 }
             }
         }
-        return candidates.firstOrNull { File(it).canExecute() || (isWindows && File(it).isFile) }
+        return candidates.firstOrNull(::usable)
     }
+
+    private fun usable(path: String): Boolean = File(path).let { it.isFile && (isWindows || it.canExecute()) }
 
     /** Minimal `which`, without spawning a shell. */
     fun which(command: String): String? {

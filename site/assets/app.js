@@ -4,6 +4,7 @@
 
   document.documentElement.classList.add("js");
 
+  var zh = /^zh/i.test(document.documentElement.lang || "");
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var sleep = function (ms) {
     return new Promise(function (resolve) { setTimeout(resolve, reduced ? 0 : ms); });
@@ -91,7 +92,7 @@
   var platform = detectPlatform();
 
   if (download) {
-    if (platform) download.textContent = "Download for " + platform;
+    if (platform) download.textContent = zh ? "下载 " + platform + " 版" : "Download for " + platform;
   }
 
   fetch("https://api.github.com/repos/Verlintas/NOIR/releases/latest", {
@@ -103,12 +104,14 @@
 
       if (download) {
         download.href = release.html_url;
-        download.textContent = "Download " + release.tag_name + (platform ? " for " + platform : "");
+        download.textContent = zh
+          ? "下载 " + release.tag_name + (platform ? " · " + platform : "")
+          : "Download " + release.tag_name + (platform ? " for " + platform : "");
       }
       if (releaseMeta) {
         var published = release.published_at ? release.published_at.slice(0, 10) : "";
         releaseMeta.textContent = release.tag_name + (published ? " · " + published : "") +
-          " · macOS / Windows / Linux · MIT";
+          (zh ? " · macOS / Windows / Linux · MIT" : " · macOS / Windows / Linux · MIT");
       }
     })
     .catch(function () { /* offline: keep the static links */ });
@@ -135,11 +138,27 @@
   var demoSize = document.getElementById("demo-size");
   if (!demoBody) return;
 
-  var zh = /^zh/i.test(document.documentElement.lang || "");
+  var CATEGORY = {
+    system: ["system", "系统"],
+    telemetry: ["telemetry", "遥测/统计"],
+    ads: ["ads", "广告"],
+    tools: ["tools", "工具"],
+    security: ["security", "安全/杀毒"],
+    social: ["social", "社交"],
+    games: ["games", "游戏"],
+    shopping: ["shopping", "购物"],
+    finance: ["finance", "金融"]
+  };
+
+  function categoryLabel(key) {
+    var pair = CATEGORY[key] || [key, key];
+    return zh ? pair[1] : pair[0];
+  }
+
   var TEXT = {
     firstRun: zh ? "首次运行向导 · Ctrl+C 随时退出" : "first run · Ctrl+C to quit",
     scanAsk: zh ? "开始扫描并生成报告?" : "Start scan and write report?",
-    applyNote: zh ? "可以安全执行 19 条（appops，可回滚）" : "19 app-ops can be applied safely (reversible)",
+    applyNote: zh ? "可以安全执行 16 条（appops，可回滚）" : "16 app-ops can be applied safely (reversible)",
     applyAsk: zh ? "现在执行?" : "Apply now?",
     skipped: zh ? "已跳过。之后可以运行：noir auto --apply" : "skipped. run later: noir auto --apply",
     cancelled: zh ? "已取消。" : "cancelled."
@@ -158,35 +177,32 @@
   }).join("\n");
 
   var EXPOSURE = [
-    ["系统", 119, 46],
-    ["遥测/统计", 32, 12],
-    ["广告", 21, 8],
-    ["工具", 11, 4],
-    ["安全/杀毒", 8, 3],
-    ["社交", 8, 3],
-    ["游戏", 7, 2],
-    ["购物", 6, 2],
-    ["金融", 5, 1]
+    ["system", 119, 46],
+    ["telemetry", 32, 12],
+    ["ads", 21, 8],
+    ["tools", 11, 4],
+    ["security", 8, 3],
+    ["social", 8, 3],
+    ["games", 7, 2],
+    ["shopping", 6, 2],
+    ["finance", 5, 1]
   ];
-  var UNCATEGORIZED = 25;
+  var UNCATEGORIZED = 39; // 217 classified + 39 unclassified = 256 flagged
 
   var FINDINGS = [
-    [36, "安全/杀毒", "com.miui.securitycenter", 12, 3],
-    [34, "安全/杀毒", "com.bsp.catchlog", 1, 0],
-    [34, "遥测/统计", "com.xiaomi.aiasst.vision", 7, 0],
-    [34, "遥测/统计", "com.xiaomi.location.fused", 1, 0],
-    [34, "遥测/统计", "com.xiaomi.aiasst.service", 6, 0],
-    [32, "遥测/统计", "com.google.android.gms", 4, 0],
-    [31, "系统", "com.android.dynsystem", 0, 0],
-    [31, "系统", "com.miui.powerkeeper", 0, 0],
-    [31, "系统", "com.miui.qr", 0, 0],
-    [31, "系统", "com.miui.contentcatcher", 0, 0]
+    [36, "security", "com.miui.securitycenter", 12, 3],
+    [34, "security", "com.bsp.catchlog", 1, 0],
+    [34, "telemetry", "com.xiaomi.aiasst.vision", 7, 0],
+    [34, "telemetry", "com.xiaomi.location.fused", 1, 0],
+    [34, "telemetry", "com.xiaomi.aiasst.service", 6, 0],
+    [32, "telemetry", "com.google.android.gms", 4, 0],
+    [31, "system", "com.android.dynsystem", 0, 0],
+    [31, "system", "com.miui.powerkeeper", 0, 0],
+    [31, "system", "com.miui.qr", 0, 0],
+    [31, "system", "com.miui.contentcatcher", 0, 0]
   ];
 
   var APPLY_COMMANDS = [
-    "cmd appops set com.miui.securitycenter PROJECT_MEDIA ignore",
-    "cmd appops set com.xiaomi.aiasst.vision PROJECT_MEDIA ignore",
-    "cmd appops set com.xiaomi.aiasst.service PROJECT_MEDIA ignore",
     "cmd appops set com.miui.powerkeeper GET_USAGE_STATS ignore",
     "cmd appops set com.bsp.catchlog GET_USAGE_STATS ignore",
     "cmd appops set com.xiaomi.location.fused GET_USAGE_STATS ignore",
@@ -253,14 +269,15 @@
     }).join("");
 
     var findings = FINDINGS.map(function (row, index) {
-      return findingRow(index + 1, row[0], row[1], row[2], row[3], row[4]);
+      return findingRow(index + 1, row[0], categoryLabel(row[1]), row[2], row[3], row[4]);
     }).join("");
 
     var exposure = EXPOSURE.map(function (row) {
-      return exposureRow(row[0], row[1], row[2]);
+      return exposureRow(categoryLabel(row[0]), row[1], row[2]);
     }).join("");
 
-    var uncategorised = '<div class="tui-exp uncat"><span class="cat">未分类</span>' +
+    var uncategorised = '<div class="tui-exp uncat"><span class="cat">' +
+      (zh ? "未分类" : "unclassified") + "</span>" +
       '<span class="tui-dots">' + repeat("· ", 13) + "</span>" +
       '<span class="count">' + UNCATEGORIZED + "</span><span class=\"pct\"></span></div>";
 
@@ -288,10 +305,12 @@
       '<span><span class="amber">●</span> MED 51</span>' +
       '<span><span class="green">●</span> LOW 31</span></span></div>' +
       '<div class="tui-planrow"><span class="k">actions</span><span class="tui-actions">' +
-      '<span>人工复核 52</span><span>DNS 拦截 31</span><span>禁止录屏 12</span>' +
+      '<span>' + (zh ? "人工复核" : "manual review") + ' 52</span>' +
+      '<span>' + (zh ? "DNS 拦截" : "DNS block") + ' 31</span>' +
+      '<span>' + (zh ? "阻止使用统计" : "block usage") + ' 12</span>' +
       '<span class="more">+1 more</span></span></div>' +
       '<div class="tui-planrow"><span class="k">auto-safe</span><span>' +
-      '<span class="safe-n">19</span> <span class="dim">reversible appops, rollback written next to the report</span>' +
+      '<span class="safe-n">16</span> <span class="dim">reversible appops, rollback written next to the report</span>' +
       "</span></div></div>" +
       "</div>";
   }

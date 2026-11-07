@@ -30,6 +30,27 @@ class AdvisorTest {
     }
 
     @Test
+    fun `multiple URLs on one host do not trigger a DNS recommendation`() {
+        val app = AppEntry(
+            pkg = "com.example.telemetry",
+            uid = "10123",
+            isSystem = false,
+            debuggable = false,
+            installer = null,
+            permissions = listOf("INTERNET"),
+            endpoints = listOf(
+                "https://tracker.example.com/upload",
+                "https://tracker.example.com/report"
+            ),
+            score = 10,
+            category = Category.TELEMETRY,
+            vendor = "Example"
+        )
+        val recommendations = Advisor.advise(listOf(app))
+        assertTrue(recommendations.none { it.action == ActionType.BLOCK_DNS })
+    }
+
+    @Test
     fun `usage stats telemetry still gets a manual-mode recommendation`() {
         val app = AppEntry(
             pkg = "com.example.telemetry",

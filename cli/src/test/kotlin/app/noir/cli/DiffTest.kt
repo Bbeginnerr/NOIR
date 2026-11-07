@@ -80,6 +80,24 @@ class DiffTest {
     }
 
     @Test
+    fun `invalid or empty reports are rejected`() {
+        val file = Files.createTempFile("noir-empty", ".json").toFile()
+        file.writeText("{}")
+        val failure = runCatching { readReport(file.path) }.exceptionOrNull()
+        assertTrue(failure is IllegalArgumentException)
+        file.delete()
+    }
+
+    @Test
+    fun `filter mismatch is visible`() {
+        val old = snapshot("old", listOf(app("com.example.a", 10))).copy(minScore = 0, limit = 1)
+        val new = snapshot("new", listOf(app("com.example.a", 10))).copy(minScore = 10, limit = 1)
+        val result = diffReports(old, new)
+        assertTrue(result.filterMismatch)
+        assertTrue(renderDiff(result).contains("report filters differ"))
+    }
+
+    @Test
     fun `report json can be parsed`() {
         val file = Files.createTempFile("noir-report", ".json").toFile()
         file.writeText(

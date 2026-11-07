@@ -65,10 +65,11 @@ class ApplyTest {
             """.trimIndent()
         )
 
-        applyCommands(Adb(script.absolutePath), result, listOf(AppOpAction("com.example", "PROJECT_MEDIA")))
+        val failed = applyCommands(Adb(script.absolutePath), result, listOf(AppOpAction("com.example", "PROJECT_MEDIA")))
 
         val applied = File(result.outDir, "applied.txt").readText()
         val rollback = File(result.outDir, "rollback.txt").readText()
+        assertTrue(failed > 0)
         assertTrue(applied.contains("failed (255) [system permission]"))
         assertTrue(applied.contains("SecurityException"))
         assertTrue(applied.contains("before: PROJECT_MEDIA: default"))
@@ -102,6 +103,6 @@ class ApplyTest {
         val rollback = File(result.outDir, "rollback.txt").readText()
         assertTrue(applied.contains("cmd appops set --user 0 com.example PROJECT_MEDIA ignore\tok (0)"))
         assertTrue(applied.contains("after:  PROJECT_MEDIA: ignore"))
-        assertTrue(rollback.contains("adb shell cmd appops set --user 0 com.example PROJECT_MEDIA default"))
+        assertTrue(rollback.contains("adb -s serial shell cmd appops set --user 0 com.example PROJECT_MEDIA default"))
     }
 }

@@ -60,7 +60,8 @@ object Dumpsys {
                 val c = current ?: continue
                 val s = line.trim()
                 when {
-                    s.startsWith("appId=") && c.appId.isEmpty() -> c.appId = s.removePrefix("appId=")
+                    (s.startsWith("appId=") || s.startsWith("userId=")) && c.appId.isEmpty() ->
+                        c.appId = s.substringAfter('=')
                     s.startsWith("flags=[") && c.flags.isEmpty() -> c.flags = s
                     s.startsWith("installerPackageName=") && c.installer == null -> {
                         val v = s.removePrefix("installerPackageName=")
@@ -99,6 +100,7 @@ object Dumpsys {
                 entry.perms.addAll(perms)
                 if (entry.appId.isEmpty() && appId != null) entry.appId = appId
                 if (entry.flags.isEmpty() && appId == "1000") entry.flags = "SYSTEM"
+                if (entry.sharedUser == null) entry.sharedUser = shared
             }
         }
 

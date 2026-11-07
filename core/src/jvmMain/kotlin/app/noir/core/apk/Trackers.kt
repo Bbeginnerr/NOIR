@@ -1,5 +1,6 @@
 package app.noir.core.apk
 
+import app.noir.core.Exposure
 import java.io.File
 
 /** Best-effort SDK / tracker fingerprinting from domains and decompiled packages. */
@@ -63,8 +64,16 @@ object Trackers {
     )
 
     fun fromEndpoints(urls: List<String>): Set<String> {
-        val haystack = urls.joinToString(" ").lowercase()
-        return DOMAINS.filter { haystack.contains(it.first) }.map { it.second }.toSortedSet()
+        val hosts = urls.mapNotNull { Exposure.hostOf(it) }
+        return DOMAINS.filter { (token, _) ->
+            hosts.any { host ->
+                host == token ||
+                    host.endsWith(".$token") ||
+                    host.split('.').any { label ->
+                        label == token || label.startsWith("$token-") || label.startsWith("$token.")
+                    }
+            }
+        }.map { it.second }.toSortedSet()
     }
 
     fun fromSources(dir: File): Set<String> {

@@ -86,7 +86,7 @@ object Advisor {
                 )
             }
 
-            if (app.uploadEndpoints.size >= 2 &&
+            if (Exposure.uploadHosts(app).size >= 2 &&
                 app.category in setOf(Category.TELEMETRY, Category.LOCATION, Category.ADS)
             ) {
                 out += Recommendation(

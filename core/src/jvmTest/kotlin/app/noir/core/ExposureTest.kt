@@ -52,4 +52,16 @@ class ExposureTest {
             Exposure.hostOf("https://tracking.example.com:8443/collect?x=1")
         )
     }
+
+    @Test
+    fun `host extraction strips userinfo and query strings`() {
+        assertEquals(
+            "tracker.example",
+            Exposure.hostOf("https://user:pass@tracker.example/upload")
+        )
+        assertEquals(
+            "good.example",
+            Exposure.hostOf("https://good.example?next=https://tracker.example/report")
+        )
+    }
 }

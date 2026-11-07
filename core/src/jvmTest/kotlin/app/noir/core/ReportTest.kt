@@ -120,7 +120,60 @@ class ReportTest {
         assertTrue(json.contains("\"category\": \"telemetry\""))
         assertTrue(json.contains("\"categoryKey\": \"TELEMETRY\""))
         assertTrue(json.contains("\"actionKey\": \"APPOP_USAGE_STATS\""))
+        assertTrue(json.contains("\"leaksByType\": {\"SMS\":"))
         assertTrue(html.contains("<html lang=\"en\">"))
+    }
+
+    @Test
+    fun `html escapes risk class and deduplicates upload hosts`() {
+        val entry = AppEntry(
+            pkg = "com.example",
+            uid = "1",
+            isSystem = false,
+            debuggable = false,
+            installer = null,
+            permissions = listOf("INTERNET", "READ_SMS"),
+            endpoints = listOf(
+                "https://tracker.example.com/upload",
+                "https://tracker.example.com/report"
+            ),
+            score = 30,
+            category = Category.TELEMETRY
+        )
+        val recommendation = Recommendation(
+            pkg = "com.example",
+            action = ActionType.REVIEW,
+            risk = "x\" onclick=\"alert(1)",
+            reason = "reason",
+            autoSafe = false
+        )
+        val html = Report.html(
+            Device("s", "device", "Pixel"),
+            listOf(entry),
+            listOf(recommendation),
+            ReportMeta(),
+            Lang.EN
+        )
+        assertTrue(html.contains("upload hosts</div><div class=\"v big\">1</div>"))
+        assertTrue(!html.contains("onclick=\"alert(1)\""))
+    }
+
+    @Test
+    fun `markdown escapes table pipes`() {
+        val entry = AppEntry(
+            pkg = "com.example",
+            uid = "1",
+            isSystem = false,
+            debuggable = false,
+            installer = null,
+            permissions = emptyList(),
+            endpoints = emptyList(),
+            score = 0,
+            category = Category.OTHER,
+            vendor = "A|B"
+        )
+        val md = Report.markdown(Device("s", "device"), listOf(entry), lang = Lang.EN)
+        assertTrue(md.contains("A\\|B"))
     }
 
     @Test

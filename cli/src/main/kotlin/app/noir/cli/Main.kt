@@ -41,9 +41,17 @@ private val VERSION: String =
     Guidance::class.java.`package`?.implementationVersion ?: "0.1.0-dev"
 
 private val BOOLEAN_FLAGS = setOf(
-    "apply", "yes", "verbose", "help", "ascii", "color", "no-color", "quiet", "no-clear",
-    "all", "purge", "json", "fail-on-regression"
+    "apply", "yes", "verbose", "help", "about", "version", "ascii", "color", "no-color",
+    "quiet", "no-clear", "all", "purge", "json", "fail-on-regression"
 )
+
+private val VALUE_FLAGS = setOf(
+    "serial", "out", "min", "limit", "only", "adb", "jadx", "top", "jobs", "lang"
+)
+
+private val ALL_OPTIONS = BOOLEAN_FLAGS + VALUE_FLAGS
+
+private val FALSE_VALUES = setOf("false", "0", "no", "off", "n")
 
 private var QUIET = false
 
@@ -53,10 +61,35 @@ private fun say(message: String) {
 
 private class NoirException(message: String, val hint: String? = null) : Exception(message)
 
+private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$")
+
+private fun requirePackageName(pkg: String): String {
+    if (!PACKAGE_NAME.matches(pkg)) {
+        throw NoirException(
+            t("包名不合法：$pkg", "invalid package name: $pkg"),
+            t(
+                "只接受 Android 包名，例如 com.example.app。",
+                "Expected an Android package name such as com.example.app."
+            )
+        )
+    }
+    return pkg
+}
+
+private fun currentUser(adb: Adb, device: Device): String =
+    adb.shell(device.serial, "am get-current-user", timeoutSec = 15).output
+        .lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.toIntOrNull() != null }
+        ?: "0"
+
 fun main(args: Array<String>) {
     initLanguage(args.toList())
     val cleaned = args.toList().withoutLanguage().toTypedArray()
-    QUIET = cleaned.contains("--quiet")
+    val global = runCatching { Args(cleaned.toList()) }.getOrNull()
+    QUIET = global?.flag("quiet") ?: rawBooleanFlag(cleaned, "--quiet")
+    ASCII = global?.flag("ascii") ?: rawBooleanFlag(cleaned, "--ascii")
+    val verbose = global?.flag("verbose") ?: rawBooleanFlag(cleaned, "--verbose")
     try {
         runMain(cleaned)
     } catch (e: NoirException) {
@@ -74,10 +107,13 @@ fun main(args: Array<String>) {
                 )
             )
         )
-        if (cleaned.contains("--verbose")) e.printStackTrace()
+        if (verbose) e.printStackTrace()
         exitProcess(1)
     }
 }
+
+private fun rawBooleanFlag(args: Array<String>, name: String): Boolean =
+    args.any { it == name || it == "$name=true" || it == "$name=1" || it == "$name=yes" || it == "$name=on" }
 
 /** Removes the global language option before command dispatch. */
 private fun List<String>.withoutLanguage(): List<String> {
@@ -85,7 +121,7 @@ private fun List<String>.withoutLanguage(): List<String> {
     var index = 0
     while (index < size) {
         val arg = this[index]
-        if (arg == "--lang" && index + 1 < size) {
+        if (arg == "--lang" && index + 1 < size && !this[index + 1].startsWith("--")) {
             index += 2
             continue
         }
@@ -100,30 +136,64 @@ private fun List<String>.withoutLanguage(): List<String> {
 }
 
 private fun runMain(args: Array<String>) {
-    if (args.isEmpty()) {
-        if (isInteractive()) guided() else usage()
+    // Validate options before help/version shortcuts or any device access.
+    Args(args.toList())
+
+    if (args.any { it == "--help" || it == "-h" } || args.firstOrNull() == "help") {
+        usage()
         return
     }
-    when (val command = args[0]) {
-        "devices" -> cmdDevices(args.drop(1))
-        "scan" -> cmdScan(args.drop(1))
-        "diff" -> cmdDiff(args.drop(1))
-        "auto" -> cmdAuto(args.drop(1))
-        "ui" -> cmdUi(args.drop(1))
-        "deep" -> cmdDeep(args.drop(1))
-        "deepscan" -> cmdDeepScan(args.drop(1))
-        "block" -> cmdBlock(args.drop(1))
-        "setup" -> cmdSetup(args.drop(1))
-        "doctor" -> cmdDoctor(args.drop(1))
-        "-h", "--help", "help" -> usage()
-        "-v", "--version", "version" -> println("NOIR $VERSION")
-        "--about", "about" -> println(Guidance.about(VERSION))
+    if (args.any { it == "--version" || it == "-v" } || args.firstOrNull() == "version") {
+        println("NOIR $VERSION")
+        return
+    }
+    if (args.any { it == "--about" } || args.firstOrNull() == "about") {
+        println(Guidance.about(VERSION))
+        return
+    }
+
+    val commandIndex = findCommandIndex(args)
+    if (commandIndex == null) {
+        if (args.isEmpty()) {
+            if (isInteractive()) guided() else usage()
+        } else {
+            usage()
+        }
+        return
+    }
+
+    val command = args[commandIndex]
+    val commandArgs = args.filterIndexed { index, _ -> index != commandIndex }
+    when (command) {
+        "devices" -> cmdDevices(commandArgs)
+        "scan" -> cmdScan(commandArgs)
+        "diff" -> cmdDiff(commandArgs)
+        "auto" -> cmdAuto(commandArgs)
+        "ui" -> cmdUi(commandArgs)
+        "deep" -> cmdDeep(commandArgs)
+        "deepscan" -> cmdDeepScan(commandArgs)
+        "block" -> cmdBlock(commandArgs)
+        "setup" -> cmdSetup(commandArgs)
+        "doctor" -> cmdDoctor(commandArgs)
         else -> {
             System.err.println(t("不认识的命令：$command", "unknown command: $command"))
             usage()
             exitProcess(2)
         }
     }
+}
+
+/** Locates the command while skipping value-taking global options. */
+private fun findCommandIndex(args: Array<String>): Int? {
+    var index = 0
+    while (index < args.size) {
+        val arg = args[index]
+        if (!arg.startsWith("--")) return index
+        val name = arg.substring(2).substringBefore('=')
+        val hasInlineValue = arg.contains('=')
+        index += if (!hasInlineValue && name in VALUE_FLAGS && index + 1 < args.size) 2 else 1
+    }
+    return null
 }
 
 private fun usage() {
@@ -243,7 +313,7 @@ private fun guided() {
     print(t("  现在执行? [y/N] ", "  apply now? [y/N] "))
     val apply = readLine()?.trim()?.lowercase()
     if (apply == "y" || apply == "yes") {
-        applyCommands(adb, result, planned)
+        if (applyCommands(adb, result, planned) > 0) exitProcess(1)
     } else {
         println(
             t(
@@ -330,14 +400,14 @@ private fun cmdScan(raw: List<String>) {
     println("%5s  %-12s %-10s %-44s %s".format("SCORE", "CATEGORY", "VENDOR", "PACKAGE", "PERM/UPLOAD/CMD"))
     result.apps.take(40).forEach { a ->
         println(
-            "%5d  %-12s %-10s %-44s %d/%d/%d".format(
-                a.score, a.category.localized(LANG), a.vendor ?: "—", a.pkg,
+            "%5d  %s %-10s %-44s %d/%d/%d".format(
+                a.score, Tui.padRight(a.category.localized(LANG), 12), a.vendor ?: "—", a.pkg,
                 a.permissions.size, a.uploadEndpoints.size, a.commandEndpoints.size
             )
         )
     }
     println()
-    println(Tui.clip("[+] ${result.outDir.absolutePath}"))
+    println(Tui.clip("[+] ${result.outDir.absolutePath}", ascii = ASCII))
 }
 
 private fun cmdDiff(raw: List<String>) {
@@ -391,7 +461,7 @@ private fun cmdAuto(raw: List<String>) {
     println()
     println(t("== 建议动作 (前 15) ==", "== recommended actions (first 15) =="))
     recommendations.take(15).forEach { r ->
-        println("  %-5s %-16s %-46s %s".format(r.risk, r.action.localized(LANG), r.pkg, r.reason))
+        println("  %-5s %s %-46s %s".format(r.risk, Tui.padRight(r.action.localized(LANG), 16), r.pkg, r.reason))
     }
 
     val planned = effectiveActions(result.adb, result, recommendations)
@@ -404,7 +474,7 @@ private fun cmdAuto(raw: List<String>) {
     )
     planned.forEach { println("  ${it.setCommand(result.meta.user)}") }
     println()
-    println(Tui.clip("[+] ${result.outDir.absolutePath}"))
+    println(Tui.clip("[+] ${result.outDir.absolutePath}", ascii = ASCII))
 
     if (!args.flag("apply")) {
         println()
@@ -419,13 +489,12 @@ private fun cmdAuto(raw: List<String>) {
 
     if (!args.flag("yes")) {
         if (!isInteractive()) {
-            println(
+            throw NoirException(
                 t(
-                    "[!] --apply 在非交互环境下需要同时加 --yes",
-                    "[!] --apply needs --yes when stdin is not interactive"
+                    "--apply 在非交互环境下需要同时加 --yes",
+                    "--apply needs --yes when stdin is not interactive"
                 )
             )
-            return
         }
         print(t("执行 ${planned.size} 条 appops 动作? [y/N] ", "apply ${planned.size} app-ops action(s)? [y/N] "))
         val answer = readLine()?.trim()?.lowercase()
@@ -434,7 +503,7 @@ private fun cmdAuto(raw: List<String>) {
             return
         }
     }
-    applyCommands(connectAdb(args), result, planned)
+    if (applyCommands(connectAdb(args), result, planned) > 0) exitProcess(1)
 }
 
 private fun cmdUi(raw: List<String>) {
@@ -449,70 +518,96 @@ private fun cmdUi(raw: List<String>) {
     println()
     print(renderDashboard(args, result, recommendations))
     println()
-    println(Tui.clip("  report  ${result.outDir.absolutePath}"))
+    println(Tui.clip("  report  ${result.outDir.absolutePath}", ascii = ASCII))
     println()
 }
 
 private fun cmdDeep(raw: List<String>) {
     val args = Args(raw)
-    val pkg = args.positional.firstOrNull()
-        ?: throw NoirException(
-            t("缺少包名。", "missing package name."),
-            t(
-                "用法：noir deep <package> [--serial S] [--out DIR]",
-                "usage: noir deep <package> [--serial S] [--out DIR]"
+    val pkg = requirePackageName(
+        args.positional.firstOrNull()
+            ?: throw NoirException(
+                t("缺少包名。", "missing package name."),
+                t(
+                    "用法：noir deep <package> [--serial S] [--out DIR]",
+                    "usage: noir deep <package> [--serial S] [--out DIR]"
+                )
             )
-        )
+    )
 
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
     applyDeviceLanguage(adb, device)
     val outDir = File(args.value("out") ?: "noir-out/deep-${pkg.replace('.', '_')}").apply { mkdirs() }
 
-    val remote = adb.shell(device.serial, "pm path $pkg").output
+    val remotes = adb.shell(device.serial, "pm path $pkg").output
         .lineSequence()
-        .firstOrNull { it.startsWith("package:") }
-        ?.removePrefix("package:")
-        ?.trim()
-        ?: throw NoirException(
+        .filter { it.startsWith("package:") }
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
+    if (remotes.isEmpty()) {
+        throw NoirException(
             t("这台设备上没有安装 $pkg。", "$pkg is not installed on this device."),
             t("先运行 noir scan 看看实际包名。", "Run noir scan first to see the actual package names.")
         )
-
-    val apk = File(outDir, "$pkg.apk")
-    println("[*] pulling $remote")
-    adb.pull(device.serial, remote, apk)
-    println("[*] apk: ${apk.length() / 1024} KiB")
-
-    val urls = ApkScan.urls(apk)
-    println("[*] endpoints: ${urls.size}")
-    urls.filter { Rules.isUpload(it) || Rules.isCommand(it) }.forEach { println("    ! $it") }
+    }
 
     val jadxBin = Platform.findJadx(args.value("jadx"))
         ?: throw NoirException(t("没有找到 jadx。", "jadx was not found."), Guidance.jadxMissing())
 
-    println("[*] decompiling with $jadxBin ...")
-    val src = File(outDir, "src")
-    val code = Jadx(jadxBin).decompile(apk, src)
-    println("[*] jadx exit=$code")
+    val urls = LinkedHashSet<String>()
+    val sourceDirs = ArrayList<File>()
+    println("[*] pulling ${remotes.size} APK(s)")
+    remotes.forEachIndexed { index, remote ->
+        val suffix = if (index == 0) "" else "-$index"
+        val apk = File(outDir, "$pkg$suffix.apk")
+        apk.delete()
+        val pulled = adb.pull(device.serial, remote, apk)
+        if (!pulled.ok || !apk.isFile) {
+            throw NoirException(
+                t("APK 拉取失败：$pkg", "failed to pull APK: $pkg"),
+                t("检查设备连接后重试。", "Check the device connection and retry.")
+            )
+        }
+        urls += ApkScan.urls(apk)
 
-    val hits = Jadx(jadxBin).grep(
-        src,
-        listOf(
-            "Runtime\\.exec", "ProcessBuilder", "setApplicationEnabledSetting",
-            "enabled_accessibility_services", "DexClassLoader", "loadLibrary",
-            "https?://", "verify\\(", "Cipher", "getInstalledPackages",
-            "getRunningTasks", "MediaProjection"
+        val src = File(outDir, if (index == 0) "src" else "src-$index")
+        src.deleteRecursively()
+        println("[*] decompiling split $index with $jadxBin ...")
+        val code = Jadx(jadxBin).decompile(apk, src)
+        if (code != 0 && !File(src, "sources").isDirectory) {
+            throw NoirException(
+                t("jadx 反编译失败（exit=$code）。", "jadx failed (exit=$code)."),
+                t("检查 jadx 或重试。", "Check jadx or retry.")
+            )
+        }
+        sourceDirs += src
+    }
+
+    println("[*] endpoints: ${urls.size}")
+    urls.filter { Rules.isUpload(it) || Rules.isCommand(it) }.forEach { println("    ! $it") }
+
+    val hits = sourceDirs.flatMap {
+        Jadx(jadxBin).grep(
+            it,
+            listOf(
+                "Runtime\\.exec|Runtime\\s*\\.\\s*getRuntime\\s*\\(\\s*\\)\\s*\\.\\s*exec",
+                "ProcessBuilder", "setApplicationEnabledSetting",
+                "enabled_accessibility_services", "DexClassLoader", "loadLibrary",
+                "https?://", "verify\\(", "Cipher", "getInstalledPackages",
+                "getRunningTasks", "MediaProjection"
+            )
         )
-    )
+    }
     println("[*] hits: ${hits.size}")
     hits.take(40).forEach { println("    ${it.file}:${it.line}  ${it.text}") }
-    println("[+] sources: ${src.absolutePath}")
+    sourceDirs.forEach { println("[+] sources: ${it.absolutePath}") }
 }
 
 private fun cmdBlock(raw: List<String>) {
     val args = Args(raw)
-    val pkgs = args.positional
+    val pkgs = args.positional.map { requirePackageName(it) }
     if (pkgs.isEmpty()) {
         throw NoirException(
             t("缺少包名。", "missing package name."),
@@ -526,16 +621,17 @@ private fun cmdBlock(raw: List<String>) {
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
     applyDeviceLanguage(adb, device)
+    val user = currentUser(adb, device)
 
-    val actions = ArrayList<String>()
-    pkgs.forEach { pkg ->
-        actions += "pm uninstall --user 0 $pkg"
-        actions += "cmd appops set $pkg PROJECT_MEDIA ignore"
-        actions += "cmd appops set $pkg GET_USAGE_STATS ignore"
+    // `block` is a per-user uninstall. AppOps on an uninstalled package are
+    // guaranteed no-ops, so they are not part of this command.
+    val actions = pkgs.map { "pm uninstall --user $user $it" }
+    val rollback = pkgs.map {
+        "adb -s ${device.serial} shell pm install-existing --user $user $it"
     }
 
-    println("# rollback")
-    pkgs.forEach { println("#   adb -s ${device.serial} shell pm install-existing --user 0 $it") }
+    println("# rollback (restores the APK, not the app data)")
+    rollback.forEach { println("#   $it") }
     println()
     actions.forEach { println("adb -s ${device.serial} shell $it") }
 
@@ -545,11 +641,29 @@ private fun cmdBlock(raw: List<String>) {
         return
     }
 
+    val outDir = File(args.value("out") ?: "noir-out").apply { mkdirs() }
+    File(outDir, "block-rollback.txt").writeText(
+        buildString {
+            appendLine("# NOIR block rollback")
+            appendLine("# generated: ${OffsetDateTime.now()}")
+            appendLine("# device: ${device.model} (${device.serial}) · user $user")
+            appendLine("# pm install-existing restores the APK; app data is not restored")
+            rollback.forEach { appendLine(it) }
+        }
+    )
+
     println()
+    var failed = 0
     actions.forEach { action ->
         print("> $action ... ")
         val result = adb.shell(device.serial, action)
+        if (!result.ok) failed++
         println(if (result.ok) "ok" else "failed (${result.code}) ${result.output.trim().take(120)}")
+    }
+    println("[*] rollback: ${File(outDir, "block-rollback.txt").absolutePath}")
+    if (failed > 0) {
+        System.err.println(t("$failed 条命令失败。", "$failed command(s) failed."))
+        exitProcess(1)
     }
 }
 
@@ -616,11 +730,16 @@ private fun cmdDoctor(raw: List<String>) {
     if (adbPath == null) {
         println(t("  adb       未找到", "  adb       not found"))
         println(Guidance.adbMissing())
-        return
+        exitProcess(1)
     }
     val adb = Adb(adbPath)
     println("  adb       $adbPath")
-    adb.exec(listOf("version"), timeoutSec = 15).output.lineSequence()
+    val version = adb.exec(listOf("version"), timeoutSec = 15)
+    if (!version.ok) {
+        println(t("  adb      无法运行", "  adb      failed to run"))
+        exitProcess(1)
+    }
+    version.output.lineSequence()
         .firstOrNull { it.startsWith("Version") }
         ?.let { println("            $it") }
 
@@ -630,11 +749,13 @@ private fun cmdDoctor(raw: List<String>) {
         println(t("  device    未连接", "  device    not connected"))
         println()
         println(Guidance.deviceGuide())
+        exitProcess(1)
     } else {
         devices.forEach { println("  device    ${it.serial}  ${it.state}  ${it.model}") }
         if (devices.any { it.state == "unauthorized" }) {
             println()
             println(Guidance.unauthorizedGuide())
+            exitProcess(1)
         }
     }
 
@@ -654,13 +775,13 @@ private fun confirm(prompt: String): Boolean {
 
 // ── scan pipeline ──────────────────────────────────────────────────────────
 
-private fun performScan(args: Args): ScanResult {
+private fun performScan(args: Args, limitOverride: Int? = null): ScanResult {
     val adb = connectAdb(args)
     val device = awaitDevice(adb, args.value("serial"), interactive = isInteractive())
     applyDeviceLanguage(adb, device)
     val outDir = File(args.value("out") ?: "noir-out").apply { mkdirs() }
-    val minScore = args.value("min")?.toIntOrNull() ?: 0
-    val limit = args.value("limit")?.toIntOrNull() ?: 500
+    val minScore = intOption(args, "min", 0, 0)
+    val limit = limitOverride ?: intOption(args, "limit", 500, 0)
 
     say("[*] host: ${Platform.describe()}")
     say("[*] device: ${device.serial} (${device.model})")
@@ -675,7 +796,14 @@ private fun performScan(args: Args): ScanResult {
     val meta = Dumpsys.parse(dump.output)
     say("[*] parsed: ${meta.size}")
 
-    val only = args.value("only")?.let { runCatching { Regex(it) }.getOrNull() }
+    val only = args.value("only")?.let {
+        runCatching { Regex(it) }.getOrElse {
+            throw NoirException(
+                t("--only 不是合法的正则表达式。", "--only is not a valid regular expression."),
+                t("检查后重试，例如 --only '^com\\.tencent\\.'。", "Check it and retry, e.g. --only '^com\\.tencent\\.'.")
+            )
+        }
+    }
     val candidates = meta.entries.filter { (pkg, m) ->
         m.perms.contains("INTERNET") &&
             m.perms.count { it in Rules.SENSITIVE } > 0 &&
@@ -685,14 +813,15 @@ private fun performScan(args: Args): ScanResult {
     say("[*] candidates (internet + sensitive): ${candidates.size}")
 
     val android = adb.shell(device.serial, "getprop ro.build.version.release").output.trim()
-    val reportMeta = readReportMeta(adb, device, android)
+    val reportMeta = readReportMeta(adb, device, android).copy(minScore = minScore, limit = limit)
 
     val targets = candidates.map { PackagePath(it.key, paths.getValue(it.key)) }
     val endpoints = HashMap<String, List<String>>()
     val missing = ArrayList<PackagePath>()
+    val cacheScope = "${device.serial}|${reportMeta.fingerprint}|${reportMeta.sdk}"
 
     targets.forEach { target ->
-        val hit = Cache.get(target.pkg, target.path)
+        val hit = Cache.get(target.pkg, target.path, cacheScope)
         if (hit != null) endpoints[target.pkg] = hit else missing += target
     }
 
@@ -706,9 +835,20 @@ private fun performScan(args: Args): ScanResult {
             }
         }
         if (!QUIET) println()
-        missing.forEach { target -> Cache.put(target.pkg, target.path, fresh[target.pkg].orEmpty()) }
+        missing.forEach { target ->
+            val found = fresh.urls[target.pkg]
+            if (found != null) {
+                endpoints[target.pkg] = found
+                Cache.put(target.pkg, target.path, found, cacheScope)
+            } else {
+                // Do not cache a pull/parse failure as "no endpoints".
+                endpoints[target.pkg] = emptyList()
+            }
+        }
         Cache.flush()
-        endpoints.putAll(fresh)
+        if (fresh.failed.isNotEmpty()) {
+            say("[!] ${fresh.failed.size} APK(s) could not be analysed; they will be retried next scan")
+        }
     } else {
         say("[*] all endpoints served from cache")
     }
@@ -774,9 +914,8 @@ private fun writeReports(result: ScanResult, recommendations: List<Recommendatio
     File(result.outDir, "plan.txt").writeText(
         effective.joinToString("\n") { it.setCommand(result.meta.user) } + if (effective.isEmpty()) "" else "\n"
     )
-    File(result.outDir, "rollback.txt").writeText(
-        effective.joinToString("\n") { it.rollbackCommand(result.meta.user) } + if (effective.isEmpty()) "" else "\n"
-    )
+    // rollback.txt is written by applyCommands from the actual before-state.
+    // A dry run or a later scan must never erase the last real rollback record.
 }
 
 private fun writeDomainFiles(outDir: File, apps: List<AppEntry>) {
@@ -823,8 +962,8 @@ internal data class AppOpAction(val pkg: String, val op: String) {
     fun getCommand(user: String?): String =
         "cmd appops get${userArg(user)} $pkg $op"
 
-    fun rollbackCommand(user: String?, mode: String = "default"): String =
-        "adb shell cmd appops set${userArg(user)} $pkg $op ${mode.ifBlank { "default" }}"
+    fun rollbackCommand(serial: String, user: String?, mode: String = "default"): String =
+        "adb -s $serial shell cmd appops set${userArg(user)} $pkg $op ${mode.ifBlank { "default" }}"
 
     private fun userArg(user: String?): String =
         if (user.isNullOrBlank()) "" else " --user $user"
@@ -913,11 +1052,11 @@ private fun classifyAppOpFailure(output: String): String = when {
     else -> "rejected"
 }
 
-internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpAction>) {
-    if (planned.isEmpty()) return
+internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpAction>): Int {
+    if (planned.isEmpty()) return 0
     val user = result.meta.user.ifBlank { null }
     val applied = ArrayList<String>()
-    val rollback = ArrayList<String>()
+    val rollback = loadRollback(result.outDir)
     var failed = 0
     var permissionFailures = 0
 
@@ -967,7 +1106,12 @@ internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpActi
 
         if (res.ok) {
             val prior = parseAppOpMode(before.output, action.op) ?: "default"
-            rollback.add(action.rollbackCommand(user, prior))
+            val key = "${action.pkg}|${action.op}"
+            // Re-applying an already-ignored op must not overwrite the original
+            // rollback mode with "ignore".
+            if (prior != "ignore" || key !in rollback) {
+                rollback[key] = action.rollbackCommand(result.device.serial, user, prior)
+            }
         }
     }
 
@@ -977,18 +1121,18 @@ internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpActi
         appendLine("# NOIR rollback")
         appendLine("# generated: ${result.meta.generatedAt}")
         appendLine("# tool: ${result.meta.tool}")
-        appendLine("# only commands that succeeded in this run are listed")
+        appendLine("# merged across runs; only successful changes are listed")
         appendLine("# device: ${result.device.model} (${result.device.serial}) · user ${result.meta.user.ifBlank { "unknown" }}")
         if (rollback.isEmpty()) {
             appendLine("# no appops changes were applied")
         } else {
-            rollback.forEach { appendLine(it) }
+            rollback.values.forEach { appendLine(it) }
         }
     }
     File(result.outDir, "rollback.txt").writeText(rollbackText)
     File(result.outDir, "applied.txt").let { println("\n[*] applied: ${it.absolutePath}") }
     println("[*] rollback: ${File(result.outDir, "rollback.txt").absolutePath}")
-    println("[*] ${planned.size - failed}/${planned.size} appops commands applied")
+    println("[*] ${planned.size - failed}/${planned.size} appops commands executed")
 
     if (failed > 0) {
         println("[!] $failed command(s) failed — full stdout/stderr is in applied.txt")
@@ -997,6 +1141,23 @@ internal fun applyCommands(adb: Adb, result: ScanResult, planned: List<AppOpActi
             println("    check Developer options → Permission monitoring, or use Shizuku.")
         }
     }
+    return failed
+}
+
+private val ROLLBACK_LINE = Regex(
+    "^adb(?: -s \\S+)? shell cmd appops set(?: --user \\S+)? (\\S+) (\\S+) (\\S+)$"
+)
+
+private fun loadRollback(outDir: File): LinkedHashMap<String, String> {
+    val result = LinkedHashMap<String, String>()
+    val file = File(outDir, "rollback.txt")
+    if (!file.isFile) return result
+    file.forEachLine { line ->
+        val match = ROLLBACK_LINE.find(line) ?: return@forEachLine
+        val (pkg, op, mode) = match.destructured
+        result["$pkg|$op"] = line
+    }
+    return result
 }
 
 internal fun ansiSupported(
@@ -1040,10 +1201,15 @@ private fun progressLine(startedMs: Long, done: Int, total: Int): String {
     val width = 26
     val pct = done * 100 / total
     val filled = (done.toLong() * width / total).toInt().coerceIn(0, width)
-    val bar = "█".repeat(filled) + "░".repeat(width - filled)
-    val spin = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[done % 10]
+    val bar = if (ASCII) {
+        "#".repeat(filled) + ".".repeat(width - filled)
+    } else {
+        "█".repeat(filled) + "░".repeat(width - filled)
+    }
+    val spin = if (ASCII) "|/-\\"[done % 4] else "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[done % 10]
     return "\r  " + bar + " " + pct + "%  " + done + "/" + total +
-        "  ·  ETA " + (eta / 60) + ":" + (eta % 60).toString().padStart(2, '0') + "  " + spin
+        "  " + (if (ASCII) "|" else "·") + "  ETA " +
+        (eta / 60) + ":" + (eta % 60).toString().padStart(2, '0') + "  " + spin
 }
 
 
@@ -1061,7 +1227,7 @@ private data class DeepFinding(
 )
 
 private val DEEP_SIGNALS: Map<String, Pair<Regex, Int>> = linkedMapOf(
-    "exec" to (Regex("Runtime\\.exec|ProcessBuilder") to 4),
+    "exec" to (Regex("Runtime\\s*\\.\\s*getRuntime\\s*\\(\\s*\\)\\s*\\.\\s*exec|Runtime\\s*\\.\\s*exec|ProcessBuilder") to 4),
     "dynamic-load" to (Regex("DexClassLoader|PathClassLoader|loadLibrary") to 3),
     "disable-app" to (Regex("setApplicationEnabledSetting") to 5),
     "a11y-hijack" to (Regex("enabled_accessibility_services") to 5),
@@ -1086,13 +1252,19 @@ private val DEEP_SKIP = listOf(
 private fun cmdDeepScan(raw: List<String>) {
     val args = Args(raw)
     val adb = connectAdb(args)
-    val scan = performScan(args)
+    val all = args.flag("all")
+    val scan = performScan(args, if (all) Int.MAX_VALUE else null)
+    writeReports(scan, emptyList())
     val outDir = File(scan.outDir, "deepscan").apply { mkdirs() }
 
-    val top = args.value("top")?.toIntOrNull() ?: 15
-    val jobs = (args.value("jobs")?.toIntOrNull()
-        ?: (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(2)).coerceIn(1, 6)
-    val targets = if (args.flag("all")) scan.apps else scan.apps.take(top)
+    val top = intOption(args, "top", 15, 1)
+    val jobs = intOption(
+        args,
+        "jobs",
+        (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(2),
+        1
+    ).coerceIn(1, 6)
+    val targets = if (all) scan.apps else scan.apps.take(top)
 
     if (targets.isEmpty()) {
         println(t("没有被标记的应用，不需要 DeepScan。", "no flagged apps; DeepScan is not needed."))
@@ -1166,38 +1338,58 @@ private fun cmdDeepScan(raw: List<String>) {
 }
 
 private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String, app: AppEntry): DeepFinding {
-    val remote = scan.paths[app.pkg]
-        ?: return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "no apk path")
-
-    val apk = File(outDir, "apks/${app.pkg}.apk")
-    if (!apk.exists()) {
-        apk.parentFile?.mkdirs()
-        adb.pull(scan.device.serial, remote, apk)
-    }
-    if (!apk.exists()) {
-        return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "pull failed")
+    val remotes = adb.shell(scan.device.serial, "pm path ${app.pkg}", timeoutSec = 30).output
+        .lineSequence()
+        .filter { it.startsWith("package:") }
+        .map { it.removePrefix("package:").trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
+        .ifEmpty { listOfNotNull(scan.paths[app.pkg]) }
+    if (remotes.isEmpty()) {
+        return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "no apk path")
     }
 
     val src = File(outDir, "src/${app.pkg}")
     val marker = File(src, ".noir-ok")
-    val cached = marker.exists() && marker.readText().trim() == remote
+    val remoteKey = remotes.joinToString("|")
+    val apks = remotes.mapIndexed { index, _ ->
+        File(outDir, "apks/${app.pkg}-$index.apk")
+    }
+    val cached = apks.all { it.isFile } && marker.isFile && marker.readText().trim() == remoteKey
+
     if (!cached) {
         src.deleteRecursively()
         src.mkdirs()
+        apks.forEachIndexed { index, apk ->
+            apk.delete()
+            apk.parentFile?.mkdirs()
+            val pulled = adb.pull(scan.device.serial, remotes[index], apk)
+            if (!pulled.ok || !apk.isFile) {
+                return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), null, null, "pull failed")
+            }
+        }
+        apks.forEachIndexed { index, apk ->
+            val splitDir = if (index == 0) src else File(src, "split-$index")
+            splitDir.deleteRecursively()
+            val exit = Jadx(jadxBin).decompile(apk, splitDir)
+            if (exit != 0 && !File(splitDir, "sources").isDirectory) {
+                return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), ManifestAnalyzer.analyze(apk), null, "jadx exit $exit")
+            }
+        }
+        runCatching { marker.writeText(remoteKey) }
     }
 
-    val exit = if (cached) 0 else Jadx(jadxBin).decompile(apk, src)
-    val sources = File(src, "sources")
-    if (exit != 0 && !sources.isDirectory) {
-        return DeepFinding(app.pkg, app.score, 0, emptyMap(), emptySet(), ManifestAnalyzer.analyze(apk), null, "jadx exit $exit")
+    val mergedSignals = HashMap<String, Int>()
+    remotes.indices.forEach { index ->
+        val dir = if (index == 0) src else File(src, "split-$index")
+        countSignals(dir).forEach { (key, count) ->
+            mergedSignals[key] = (mergedSignals[key] ?: 0) + count
+        }
     }
-    runCatching { marker.writeText(remote) }
-
-    val signals = countSignals(src)
     var risk = DEEP_SIGNALS.entries.sumOf { (key, def) ->
-        (signals[key] ?: 0).coerceAtMost(3) * def.second
+        (mergedSignals[key] ?: 0).coerceAtMost(3) * def.second
     }
-    val manifest = ManifestAnalyzer.analyze(apk)
+    val manifest = apks.firstNotNullOfOrNull { ManifestAnalyzer.analyze(it) }
     manifest?.let { facts ->
         risk += facts.riskyCount.coerceAtMost(4)
         if (facts.cleartext == true && app.uploadEndpoints.isNotEmpty()) risk += 2
@@ -1205,9 +1397,14 @@ private fun analyzeOne(adb: Adb, scan: ScanResult, outDir: File, jadxBin: String
         if (facts.debuggable == true) risk += 3
     }
 
+    val trackers = remotes.indices.flatMap { index ->
+        val dir = if (index == 0) src else File(src, "split-$index")
+        Trackers.fromSources(dir)
+    }.toSet()
+
     return DeepFinding(
-        app.pkg, app.score, risk.coerceAtMost(40), signals,
-        Trackers.fromEndpoints(app.endpoints) + Trackers.fromSources(src),
+        app.pkg, app.score, risk.coerceAtMost(40), mergedSignals,
+        Trackers.fromEndpoints(app.endpoints) + trackers,
         manifest, src, null
     )
 }
@@ -1343,13 +1540,12 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
 
     if (!args.flag("yes")) {
         if (!isInteractive()) {
-            println(
+            throw NoirException(
                 t(
-                    "[!] --apply 在非交互环境下需要同时加 --yes",
-                    "[!] --apply needs --yes when stdin is not interactive"
+                    "--apply 在非交互环境下需要同时加 --yes",
+                    "--apply needs --yes when stdin is not interactive"
                 )
             )
-            return
         }
         print(t("执行这 ${planned.size} 条 appops? [y/N] ", "apply these ${planned.size} app-ops? [y/N] "))
         val answer = readLine()?.trim()?.lowercase()
@@ -1358,7 +1554,7 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
             return
         }
     }
-    applyCommands(adb, scan, planned)
+    if (applyCommands(adb, scan, planned) > 0) exitProcess(1)
 
     if (!args.flag("purge")) return
 
@@ -1367,17 +1563,52 @@ private fun offerCleanup(args: Args, adb: Adb, scan: ScanResult, findings: List<
         println(t("高风险项里没有用户应用，无需卸载。", "no high-risk user apps; nothing to uninstall."))
         return
     }
+    val user = scan.meta.user.ifBlank { "0" }
+    val rollbackFile = File(scan.outDir, "purge-rollback.txt")
+    val rollback = LinkedHashSet<String>()
+    if (rollbackFile.isFile) {
+        rollbackFile.readLines().filter { it.startsWith("adb ") }.forEach { rollback += it }
+    }
+    var failed = 0
+
     println()
     println(t("== 卸载高风险用户应用 ==", "== uninstall high-risk user apps =="))
-    println(t("# 恢复命令：adb shell pm install-existing --user 0 <package>", "# restore: adb shell pm install-existing --user 0 <package>"))
+    println(
+        t(
+            "# 恢复命令只能重装 APK，应用数据不会恢复；--user $user",
+            "# restore only reinstalls the APK; app data is not restored; --user $user"
+        )
+    )
     userHigh.forEach { f ->
+        val pkg = requirePackageName(f.pkg)
         if (!args.flag("yes") && isInteractive()) {
-            print(t("  卸载 ${f.pkg}? [y/N] ", "  uninstall ${f.pkg}? [y/N] "))
+            print(t("  卸载 $pkg? [y/N] ", "  uninstall $pkg? [y/N] "))
             val answer = readLine()?.trim()?.lowercase()
             if (answer != "y" && answer != "yes") return@forEach
         }
-        val result = adb.shell(scan.device.serial, "pm uninstall --user 0 ${f.pkg}")
-        println("  %-44s %s".format(f.pkg, if (result.ok) "uninstalled" else "failed (${result.code})"))
+        val result = adb.shell(scan.device.serial, "pm uninstall --user $user $pkg")
+        if (result.ok) {
+            rollback += "adb -s ${scan.device.serial} shell pm install-existing --user $user $pkg"
+        } else {
+            failed++
+        }
+        println("  %-44s %s".format(pkg, if (result.ok) "uninstalled" else "failed (${result.code})"))
+    }
+
+    if (rollback.isNotEmpty()) {
+        rollbackFile.writeText(
+            buildString {
+                appendLine("# NOIR purge rollback")
+                appendLine("# device: ${scan.device.model} (${scan.device.serial}) · user $user")
+                appendLine("# pm install-existing restores the APK; app data is not restored")
+                rollback.forEach { appendLine(it) }
+            }
+        )
+        println("[*] rollback: ${rollbackFile.absolutePath}")
+    }
+    if (failed > 0) {
+        System.err.println(t("$failed 个应用卸载失败。", "$failed app(s) failed to uninstall."))
+        exitProcess(1)
     }
 }
 
@@ -1483,7 +1714,21 @@ private fun awaitDevice(adb: Adb, requested: String?, interactive: Boolean): Dev
     }
 }
 
-private class Args(raw: List<String>) {
+private fun intOption(args: Args, name: String, default: Int, min: Int): Int {
+    val raw = args.value(name) ?: return default
+    val value = raw.toIntOrNull()
+        ?: throw NoirException(
+            t("--$name 需要整数，收到：$raw", "--$name needs an integer, got: $raw")
+        )
+    if (value < min) {
+        throw NoirException(
+            t("--$name 不能小于 $min。", "--$name must be at least $min.")
+        )
+    }
+    return value
+}
+
+internal class Args(raw: List<String>) {
     val positional = ArrayList<String>()
     val flags = HashSet<String>()
     val values = HashMap<String, String>()
@@ -1498,14 +1743,27 @@ private class Args(raw: List<String>) {
                 if (equals > 0) {
                     val name = body.substring(0, equals)
                     val value = body.substring(equals + 1)
-                    if (name in BOOLEAN_FLAGS || value.isEmpty()) flags.add(name) else values[name] = value
+                    when {
+                        name in BOOLEAN_FLAGS ->
+                            if (value.trim().lowercase() !in FALSE_VALUES) flags.add(name)
+                        name in VALUE_FLAGS && value.isEmpty() ->
+                            throw NoirException(t("--$name 需要一个值。", "--$name requires a value."))
+                        value.isEmpty() -> flags.add(name)
+                        else -> values[name] = value
+                    }
                 } else {
-                    val takesValue = body !in BOOLEAN_FLAGS && i + 1 < raw.size && !raw[i + 1].startsWith("--")
-                    if (takesValue) {
-                        values[body] = raw[i + 1]
-                        i++
-                    } else {
-                        flags.add(body)
+                    when {
+                        body in BOOLEAN_FLAGS -> flags.add(body)
+                        body in VALUE_FLAGS -> {
+                            if (i + 1 >= raw.size || raw[i + 1].startsWith("--")) {
+                                throw NoirException(
+                                    t("--$body 需要一个值。", "--$body requires a value.")
+                                )
+                            }
+                            values[body] = raw[i + 1]
+                            i++
+                        }
+                        else -> flags.add(body)
                     }
                 }
             } else {
@@ -1513,6 +1771,9 @@ private class Args(raw: List<String>) {
             }
             i++
         }
+
+        val unknown = (flags + values.keys).firstOrNull { it !in ALL_OPTIONS }
+        if (unknown != null) throw NoirException("unknown option: --$unknown")
     }
 
     fun flag(name: String): Boolean = name in flags

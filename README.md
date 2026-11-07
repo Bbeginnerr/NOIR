@@ -35,14 +35,14 @@ NOIR 是一个跑在电脑上的审计工具，通过 `adb` 读取已连接 Andr
 4. **数据关联**：把权限翻译成"能拿到什么数据"（位置/通讯录/短信/通话/麦克风/相机/屏幕/应用列表/设备标识/文件/日历/账号），再和上报域名配对，得出"哪类数据可能流向哪里"。
 5. **共享 UID**：识别 `android.uid.system` 这类共享用户，列出哪些包实际上共享同一套权限并集。
 6. **清单层**：解析 `AndroidManifest.xml` 二进制 AXML，找出没有权限保护的导出组件、明文流量、备份、debuggable、targetSdk。
-4. **给建议**：区分「可安全自动执行」「需人工确认」「不建议动」，并为每条动作生成回滚命令。
-5. **必要时深挖**：`deep` 会把单个 APK 拉到本地，用 `jadx` 反编译后检索 `Runtime.exec`、`setApplicationEnabledSetting`、`DexClassLoader`、`MediaProjection` 等高风险调用。
+7. **给建议**：区分「可安全自动执行」「需人工确认」「不建议动」，并为每条动作生成回滚命令。
+8. **必要时深挖**：`deep` 会把一个应用的基础 APK 和 split APK 拉到本地，用 `jadx` 反编译后检索 `Runtime.getRuntime().exec`、`setApplicationEnabledSetting`、`DexClassLoader`、`MediaProjection` 等高风险调用。
 
 ## 它不做什么
 
 - 不联网、不上传任何数据、不需要账号。
 - 不修改系统分区，不需要 root。
-- 不会自动卸载任何东西，除非你显式加 `--aggressive`。
+- 默认不会卸载任何东西；只有 `noir deepscan --purge` 会逐个确认卸载高风险用户应用。
 
 ---
 
@@ -57,7 +57,7 @@ noir
 1. 检查 `adb`，没有就**问你要不要自动下载**（`~/.noir/tools`）
 2. 检查设备，没有就打印**开发者模式 / USB 调试的开通步骤**，然后**等你插线**（最多 180 秒）
 3. 问一句「开始扫描?」，扫完直接出仪表盘
-4. 问一句「执行这 19 条安全处置?」，`y` 就执行，并写好回滚文件
+4. 问一句「执行安全处置?」，`y` 就执行，并写好回滚文件
 
 全程只会问两三个 y/n，其余都是自动的。
 
@@ -145,9 +145,10 @@ scoop install adb jadx
 到 [Releases](https://github.com/Verlintas/NOIR/releases) 下载对应平台的 portable 包：
 
 ```
-noir-v0.1.1-macOS-portable.zip
-noir-v0.1.1-Windows-portable.zip
-noir-v0.1.1-Linux-portable.zip
+noir-vX.Y.Z-macOS-arm64-portable.zip
+noir-vX.Y.Z-macOS-x86_64-portable.zip
+noir-vX.Y.Z-Windows-portable.zip
+noir-vX.Y.Z-Linux-portable.zip
 SHA256SUMS.txt
 ```
 
@@ -220,7 +221,7 @@ noir diff old/report.json new/report.json   # 对比两次扫描
 noir ui                   # 扫描并渲染仪表盘
 noir auto                 # 扫描 + 分类 + 生成处置计划（dry-run）
 noir auto --apply         # 执行安全的 appops 动作（可回滚）
-noir auto --apply --aggressive   # 额外卸载被标记的用户应用
+noir deepscan --apply --purge    # 额外卸载高风险用户应用（逐个确认）
 noir deep com.example.app # 拉包 + jadx + 关键字检索
 noir block com.example.app        # 打印处置命令
 noir block com.example.app --apply
@@ -263,7 +264,7 @@ noir deepscan --jobs 4         # 并行 jadx 数量
 ```
 
 流程是：扫描 → 按风险排序 → 逐个 `adb pull` + `jadx` → 统计代码级信号
-（`Runtime.exec`、`DexClassLoader`、`setApplicationEnabledSetting`、
+（`Runtime.getRuntime().exec`、`DexClassLoader`、`setApplicationEnabledSetting`、
 `enabled_accessibility_services`、`MediaProjection`、`SystemProperties.set`、
 短信/设备标识、WebView 桥、无障碍/通知监听/设备管理员 …）→ 解析清单
 （导出组件、明文流量、备份、debuggable）→ 识别 SDK（Umeng/Firebase/AppsFlyer…）
@@ -301,7 +302,7 @@ noir-out/
 
 ## 缓存
 
-扫描结果按 `包名 + APK 路径` 缓存在 `~/.noir/endpoints.tsv`。应用更新后路径变化会自动重新分析，重复扫描通常只需几秒。
+扫描结果按 `设备/构建指纹 + 包名 + APK 路径` 缓存在 `~/.noir/endpoints-v3.tsv`。应用更新后路径变化会自动重新分析，失败/半截扫描不会写入缓存。
 
 ---
 

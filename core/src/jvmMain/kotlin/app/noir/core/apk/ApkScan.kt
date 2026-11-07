@@ -21,8 +21,12 @@ object ApkScan {
                 val entry = entries.nextElement()
                 if (!entry.name.startsWith("classes") || !entry.name.endsWith(".dex")) continue
                 if (entry.size <= 0 || entry.size > 64L * 1024 * 1024) continue
-                val bytes = zip.getInputStream(entry).use { it.readBytes() }
-                scan(bytes, out, limit)
+                try {
+                    val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                    scan(bytes, out, limit)
+                } catch (_: Exception) {
+                    // Keep URLs already extracted from earlier dex entries.
+                }
             }
         }
         return out.toList()

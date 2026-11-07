@@ -21,6 +21,9 @@ internal var LANG: Lang = Lang.ZH
 /** True when the user pinned a language; the device must not override it. */
 internal var LANG_LOCKED: Boolean = false
 
+/** Ask renderers for plain ASCII borders, bars and ellipses. */
+internal var ASCII: Boolean = false
+
 /** Picks the Chinese or English string for the current interface. */
 internal fun t(zh: String, en: String): String = if (LANG == Lang.EN) en else zh
 

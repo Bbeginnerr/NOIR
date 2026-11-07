@@ -29,7 +29,9 @@ internal data class ReportSnapshot(
     val device: String,
     val tool: String,
     val generated: String,
-    val apps: Map<String, ReportApp>
+    val apps: Map<String, ReportApp>,
+    val minScore: Int? = null,
+    val limit: Int? = null
 )
 
 internal data class AppChange(val old: ReportApp, val new: ReportApp) {
@@ -65,6 +67,9 @@ internal data class DiffResult(
         get() = added.isNotEmpty() || changed.any {
             it.scoreDelta > 0 || it.addedPermissions.isNotEmpty() || it.addedEndpoints.isNotEmpty()
         }
+
+    val filterMismatch: Boolean
+        get() = old.minScore != new.minScore || old.limit != new.limit
 }
 
 /** Old reports have no categoryKey; map their label back to the stable enum. */
@@ -81,29 +86,40 @@ private fun JsonObject.number(key: String, fallback: Int = 0): Int =
 
 private fun JsonObject.stringList(key: String): List<String> {
     val value = get(key) ?: return emptyList()
-    if (!value.isJsonArray) return emptyList()
-    return value.asJsonArray.mapNotNull { it.takeIf { v -> v.isJsonPrimitive }?.asString }
+    require(value.isJsonArray) { "invalid report: $key must be an array" }
+    return value.asJsonArray.map { element ->
+        require(element.isJsonPrimitive && element.asJsonPrimitive.isString) {
+            "invalid report: $key must contain strings"
+        }
+        element.asString
+    }
 }
 
 internal fun readReport(path: String): ReportSnapshot {
     val file = File(path)
     require(file.isFile) { "report not found: ${file.path}" }
     val root = JsonParser.parseString(file.readText()).asJsonObject
-    val env = root.getAsJsonObject("environment") ?: JsonObject()
-    val device = root.getAsJsonObject("device") ?: JsonObject()
-    val apps = root.getAsJsonArray("apps") ?: JsonArray()
+    require(root.get("environment")?.isJsonObject == true) { "invalid report: missing environment object" }
+    require(root.get("device")?.isJsonObject == true) { "invalid report: missing device object" }
+    require(root.get("apps")?.isJsonArray == true) { "invalid report: missing apps array" }
+    val env = root.getAsJsonObject("environment")
+    val device = root.getAsJsonObject("device")
+    val apps = root.getAsJsonArray("apps")
 
     val parsed = apps.map { element ->
+        require(element.isJsonObject) { "invalid report: app entry is not an object" }
         val app = element.asJsonObject
+        val pkg = app.string("package")
+        require(pkg.isNotBlank()) { "invalid report: app entry has no package" }
         ReportApp(
-            pkg = app.string("package"),
+            pkg = pkg,
             score = app.number("score"),
             category = app.string("category", "—"),
             permissions = app.stringList("permissions").sorted(),
             endpoints = app.stringList("endpoints").sorted(),
             categoryKey = app.string("categoryKey").ifBlank { null }
         )
-    }.filter { it.pkg.isNotBlank() }.associateBy { it.pkg }
+    }.associateBy { it.pkg }
 
     val model = device.string("model")
     val serial = device.string("serial")
@@ -119,7 +135,9 @@ internal fun readReport(path: String): ReportSnapshot {
         device = deviceLabel,
         tool = env.string("tool", "unknown"),
         generated = env.string("generatedAt"),
-        apps = parsed
+        apps = parsed,
+        minScore = env.get("minScore")?.takeIf { !it.isJsonNull }?.asInt,
+        limit = env.get("limit")?.takeIf { !it.isJsonNull }?.asInt
     )
 }
 
@@ -150,6 +168,13 @@ internal fun renderDiff(result: DiffResult): String = buildString {
     appendLine("old: ${result.old.path} · ${result.old.device} · ${result.old.generated.ifBlank { "unknown" }}")
     appendLine("new: ${result.new.path} · ${result.new.device} · ${result.new.generated.ifBlank { "unknown" }}")
     appendLine("apps: ${result.old.apps.size} -> ${result.new.apps.size}")
+    if (result.filterMismatch) {
+        appendLine(
+            "warning: report filters differ " +
+                "(min ${result.old.minScore ?: "none"} -> ${result.new.minScore ?: "none"}, " +
+                "limit ${result.old.limit ?: "none"} -> ${result.new.limit ?: "none"})"
+        )
+    }
     appendLine("regression: ${if (result.regressions) "yes" else "no"}")
     appendLine()
 

@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: ${{ matrix.os }}
@@ -30,14 +33,39 @@ jobs:
 
       - name: Test
         shell: bash
+        env:
+          COLUMNS: 50
         run: ./gradlew :core:jvmTest :cli:test --console=plain
 
-      - name: Smoke test (no device attached)
+      - name: Smoke test
         shell: bash
-        run: ./cli/build/install/noir/bin/noir devices || true
+        run: |
+          ./cli/build/install/noir/bin/noir --version
+          ./cli/build/install/noir/bin/noir --help >/dev/null
+
+      - name: Package smoke (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN_JAR="$(basename "$(ls cli/build/install/noir/lib/cli-*.jar | head -1)")"
+          mkdir -p stage
+          jpackage \
+            --type app-image \
+            --name NOIR \
+            --input cli/build/install/noir/lib \
+            --main-jar "$MAIN_JAR" \
+            --main-class app.noir.cli.MainKt \
+            --dest stage \
+            --app-version 1.0.0 \
+            --vendor Verlintas \
+            --description "Android leak audit" \
+            --java-options "-Dfile.encoding=UTF-8" \
+            --jlink-options "--strip-debug --no-man-pages --no-header-files --compress=2"
+          ./stage/NOIR/bin/NOIR --version
 
       - uses: actions/upload-artifact@v7
         with:
-          name: noir-${{ matrix.os }}
+          name: noir-${{ runner.os }}
           path: cli/build/install/noir
           if-no-files-found: error

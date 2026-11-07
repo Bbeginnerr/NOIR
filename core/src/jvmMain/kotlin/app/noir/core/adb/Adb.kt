@@ -17,23 +17,8 @@ data class ExecResult(val code: Int, val output: String, val timedOut: Boolean =
 /** Thin wrapper around the platform `adb` binary. */
 class Adb(private val bin: String = System.getenv("ADB") ?: "adb") {
 
-    fun exec(args: List<String>, timeoutSec: Long = 180): ExecResult {
-        val process = ProcessBuilder(Exec.argv(bin, args))
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().use { it.readText() }
-        val finished = if (timeoutSec <= 0) {
-            process.waitFor()
-            true
-        } else {
-            process.waitFor(timeoutSec, TimeUnit.SECONDS)
-        }
-        if (!finished) {
-            process.destroyForcibly()
-            return ExecResult(-1, output, timedOut = true)
-        }
-        return ExecResult(process.exitValue(), output)
-    }
+    fun exec(args: List<String>, timeoutSec: Long = 180): ExecResult =
+        runProcess(args, timeoutSec, null)
 
     /**
      * Runs a command and delivers stdout line by line. Used by the device-side
@@ -43,18 +28,42 @@ class Adb(private val bin: String = System.getenv("ADB") ?: "adb") {
         args: List<String>,
         timeoutSec: Long = 0,
         onLine: (String) -> Unit
+    ): ExecResult = runProcess(args, timeoutSec, onLine)
+
+    /**
+     * Drains stdout on a daemon thread while the caller enforces the deadline.
+     * Reading to EOF before waitFor() would make the timeout ineffective for a
+     * process that hangs without closing its pipe.
+     */
+    private fun runProcess(
+        args: List<String>,
+        timeoutSec: Long,
+        onLine: ((String) -> Unit)?
     ): ExecResult {
         val process = ProcessBuilder(Exec.argv(bin, args))
             .redirectErrorStream(true)
             .start()
         val output = StringBuilder()
-        process.inputStream.bufferedReader().use { reader ->
-            while (true) {
-                val line = reader.readLine() ?: break
-                output.append(line).append('\n')
-                onLine(line)
+        val reader = Thread {
+            try {
+                process.inputStream.bufferedReader().use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        synchronized(output) { output.append(line).append('\n') }
+                        try {
+                            onLine?.invoke(line)
+                        } catch (_: Exception) {
+                            // A progress callback must not kill the stream reader.
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Process killed on timeout, or the pipe was closed.
             }
         }
+        reader.isDaemon = true
+        reader.start()
+
         val finished = if (timeoutSec <= 0) {
             process.waitFor()
             true
@@ -63,9 +72,11 @@ class Adb(private val bin: String = System.getenv("ADB") ?: "adb") {
         }
         if (!finished) {
             process.destroyForcibly()
-            return ExecResult(-1, output.toString(), timedOut = true)
+            reader.join(2_000)
+            return ExecResult(-1, synchronized(output) { output.toString() }, timedOut = true)
         }
-        return ExecResult(process.exitValue(), output.toString())
+        reader.join(2_000)
+        return ExecResult(process.exitValue(), synchronized(output) { output.toString() })
     }
 
     fun shell(serial: String?, command: String, timeoutSec: Long = 180): ExecResult {
@@ -82,8 +93,13 @@ class Adb(private val bin: String = System.getenv("ADB") ?: "adb") {
     fun devices(): List<Device> {
         val out = exec(listOf("devices", "-l"), timeoutSec = 30).output
         return out.lineSequence()
-            .drop(1)
-            .filter { it.isNotBlank() && !it.startsWith("*") }
+            .map { it.trim() }
+            .filter {
+                it.isNotEmpty() &&
+                    !it.startsWith("*") &&
+                    !it.startsWith("List of devices") &&
+                    !it.startsWith("adb server")
+            }
             .mapNotNull { line ->
                 val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
                 if (parts.size < 2) return@mapNotNull null

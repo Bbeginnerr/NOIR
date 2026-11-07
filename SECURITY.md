@@ -7,7 +7,8 @@ NOIR is a **local, read-only-by-default** audit tool. It talks to a device throu
 
 - no telemetry, no analytics, no network calls of its own
 - no root, no bootloader unlock, no system partition changes
-- `--apply` only sets Android **app-ops**, which are reversible with `default`
+- `noir auto --apply` / `noir deepscan --apply` only set Android **app-ops**, which are reversible with `default`
+- `noir block --apply` performs a per-user **uninstall**; `noir deepscan --purge` can uninstall high-risk user apps. Both restore the APK with `pm install-existing`, but deleted app data is not recoverable
 
 ## Reporting a vulnerability in NOIR
 
@@ -37,5 +38,6 @@ anything that could put users at risk before a fix is available.
 - Only run it against devices you own or are explicitly authorised to test.
 - `noir auto` is a dry run; nothing is executed without `--apply`.
 - Review `plan.txt` and `rollback.txt` before applying anything.
-- Uninstalling a package for user 0 can break device features. `noir block`
-  prints the exact restore command (`pm install-existing`) before doing anything.
+- Uninstalling a package for the current user can break device features. `noir block`
+  prints the exact restore command (`pm install-existing`) before doing anything;
+  it restores the APK, not the app data.

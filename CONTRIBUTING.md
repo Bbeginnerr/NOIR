@@ -30,6 +30,8 @@ cli/
 ```
 
 Keep `commonMain` free of JVM imports — the Android and iOS targets are planned.
+Platform-specific environment access goes through `expect`/`actual` (see
+`core/src/commonMain/kotlin/app/noir/core/platform/Terminal.kt`).
 
 ## Where to add things
 
@@ -62,7 +64,7 @@ Keep `commonMain` free of JVM imports — the Android and iOS targets are planne
 
 ## Pull requests
 
-- `./gradlew :core:jvmTest :cli:installDist` must pass
+- `./gradlew :core:jvmTest :cli:test :cli:installDist` must pass
 - add a line to `CHANGELOG.md` under `Unreleased`
 - if the change affects output, paste a before/after snippet
 

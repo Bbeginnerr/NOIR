@@ -8,6 +8,7 @@ external fonts, no analytics. Publish the **contents** of `site/` under
 site/
 ├── index.html                  EN — /noir/
 ├── zh/index.html               ZH — /noir/zh/
+├── zh/manifest.webmanifest     zh-CN PWA start page
 ├── 404.html                    self-contained error page
 ├── robots.txt
 ├── sitemap.xml
@@ -57,6 +58,9 @@ git push
 ```
 
 GitHub Pages ignores `_headers`; that file is for Netlify / Cloudflare Pages.
+GitHub Pages also only reads a repository-root `robots.txt` and `404.html`, so
+the copies under `noir/` are not used there. If the parent site needs them, add
+the NOIR sitemap/404 rules to the parent repository's root files.
 
 ### Any static host / nginx
 
@@ -74,7 +78,7 @@ Set the publish directory to `site`. `_headers` already contains:
 
 - `Content-Security-Policy` limited to self, `api.github.com`, inline styles and
   the inline JSON-LD block
-- `nosniff`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`
+- `nosniff`, `Referrer-Policy`, `X-Frame-Options`, `Permissions-Policy`, HSTS
 - one-week cache for `/assets/*`
 
 ## Regenerate the social card
@@ -96,12 +100,14 @@ Keep it at 1200×630; X, Slack, Discord and GitHub all crop around that ratio.
   the GitHub API and link to the GitHub release page, never directly to an
   asset. Keep it that way so the download flow, checksums and release notes stay
   together.
-- `sitemap.xml` only changes if you add routes.
+- `sitemap.xml` only needs a new `<url>` if you add routes; update `lastmod`
+  whenever the page content changes.
 - `robots.txt`, canonical and `og:url` assume `https://verlintas.dev/noir/`.
 - If the X handle changes, update `08 / Source` and the contact list in both
   `index.html` and `zh/index.html`.
-- The demo numbers (`501` apps, `256` flagged, `19` app-ops) are illustrative,
-  not a real report. Keep the "simulated" label visible.
+- The demo numbers (`501` apps, `256` flagged, `16` app-ops) are illustrative,
+  not a real report. Keep the "simulated" label visible. The counts must add up:
+  classified exposure rows + unclassified = flagged.
 - The demo runs the guided `noir` path end to end: first-run prompt → scan
   progress → dashboard → apply or skip. It mirrors
   `core/src/commonMain/kotlin/app/noir/core/Tui.kt` (logo, DEVICE, EXPOSURE

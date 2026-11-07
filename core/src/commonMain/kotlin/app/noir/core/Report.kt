@@ -25,7 +25,9 @@ object Report {
         sb.append("    \"build\": \"").append(esc(meta.build)).append("\",\n")
         sb.append("    \"fingerprint\": \"").append(esc(meta.fingerprint)).append("\",\n")
         sb.append("    \"user\": \"").append(esc(meta.user)).append("\",\n")
-        sb.append("    \"generatedAt\": \"").append(esc(meta.generatedAt)).append("\"\n")
+        sb.append("    \"generatedAt\": \"").append(esc(meta.generatedAt)).append("\",\n")
+        sb.append("    \"minScore\": ").append(meta.minScore?.toString() ?: "null").append(",\n")
+        sb.append("    \"limit\": ").append(meta.limit?.toString() ?: "null").append("\n")
         sb.append("  },\n")
         sb.append("  \"device\": {\"serial\": \"").append(esc(device.serial))
             .append("\", \"model\": \"").append(esc(device.model)).append("\"},\n")
@@ -44,6 +46,7 @@ object Report {
             sb.append("      \"dataTypes\": ").append(array(a.dataTypes.map { it.localized(lang) })).append(",\n")
             sb.append("      \"dataTypeKeys\": ").append(array(a.dataTypes.map { it.name })).append(",\n")
             sb.append("      \"leaks\": ").append(leaksJson(a, lang)).append(",\n")
+            sb.append("      \"leaksByType\": ").append(leaksByTypeJson(a)).append(",\n")
             sb.append("      \"score\": ").append(a.score).append(",\n")
             sb.append("      \"permissions\": ").append(array(a.permissions)).append(",\n")
             sb.append("      \"endpoints\": ").append(array(a.endpoints)).append("\n")
@@ -82,6 +85,8 @@ object Report {
         sb.append("- fingerprint: ").append(meta.fingerprint).append("\n")
         sb.append("- user: ").append(meta.user).append("\n")
         sb.append("- generated: ").append(meta.generatedAt).append("\n")
+        sb.append("- filters: min=").append(meta.minScore ?: "none")
+            .append(" limit=").append(meta.limit ?: "none").append("\n")
         sb.append("- apps flagged: ").append(apps.size).append("\n")
         sb.append("- recommendations: ").append(recommendations.size).append("\n\n")
 
@@ -91,8 +96,8 @@ object Report {
         apps.forEach { a ->
             sb.append("| ").append(a.score)
                 .append(" | `").append(a.pkg).append("`")
-                .append(" | ").append(a.category.localized(lang))
-                .append(" | ").append(a.vendor ?: "—")
+                .append(" | ").append(md(a.category.localized(lang)))
+                .append(" | ").append(md(a.vendor ?: "—"))
                 .append(" | ").append(if (a.isSystem) "yes" else "no")
                 .append(" | ").append(a.permissions.size)
                 .append(" | ").append(a.uploadEndpoints.size)
@@ -106,9 +111,9 @@ object Report {
             sb.append("|:---:|---|---|---|\n")
             recommendations.forEach { r ->
                 sb.append("| ").append(r.risk)
-                    .append(" | ").append(r.action.localized(lang))
+                    .append(" | ").append(md(r.action.localized(lang)))
                     .append(" | `").append(r.pkg).append("`")
-                    .append(" | ").append(r.reason)
+                    .append(" | ").append(md(r.reason))
                     .append(" |\n")
             }
         }
@@ -176,12 +181,12 @@ object Report {
             .filterValues { it.size > 1 }
             .toList()
             .sortedByDescending { it.second.size }
-        val uploadHosts = apps.flatMap { it.uploadEndpoints }.distinct().size
+        val uploadHosts = apps.flatMap { Exposure.uploadHosts(it) }.distinct().size
         val deviceLabel = device.model.ifBlank { device.serial }
         val sb = StringBuilder()
 
         sb.append("""<!doctype html>
-<html lang="${if (lang == Lang.ZH) "zh-CN" else "en"}">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -288,7 +293,12 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
     <tbody>
 """)
             recommendations.forEach { rec ->
-                val cls = rec.risk.lowercase()
+                val cls = when (rec.risk.uppercase()) {
+                    "HIGH" -> "high"
+                    "MED" -> "med"
+                    "LOW" -> "low"
+                    else -> "low"
+                }
                 sb.append("""      <tr><td><span class="badge $cls">${h(rec.risk)}</span>${if (rec.autoSafe) """ <span class="badge auto">auto</span>""" else ""}</td><td>${h(rec.action.localized(lang))}</td><td><span class="mono">${h(rec.pkg)}</span></td><td>${h(rec.reason)}</td></tr>
 """)
             }
@@ -424,6 +434,17 @@ footer{border-top:1px solid var(--line);margin-top:24px;padding-top:18px;color:v
             "\"${esc(data.localized(lang))}\":" + array(hosts)
         }
     }
+
+    /** Stable-key variant; `leaks` remains for human-facing compatibility. */
+    private fun leaksByTypeJson(app: AppEntry): String {
+        if (app.leaks.isEmpty()) return "{}"
+        return app.leaks.entries.joinToString(prefix = "{", postfix = "}") { (data, hosts) ->
+            "\"${data.name}\":" + array(hosts)
+        }
+    }
+
+    private fun md(value: String): String =
+        value.replace("|", "\\|").replace("\r", " ").replace("\n", " ")
 
     private fun array(items: List<String>): String =
         items.joinToString(prefix = "[", postfix = "]") { "\"${esc(it)}\"" }

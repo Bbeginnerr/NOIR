@@ -10,6 +10,12 @@ import java.io.File
 
 data class PackagePath(val pkg: String, val path: String)
 
+/** Successful URL scans plus packages whose extraction failed and must not be cached. */
+data class UrlScan(
+    val urls: Map<String, List<String>>,
+    val failed: Set<String> = emptySet()
+)
+
 /**
  * Collects URL strings from every installed APK.
  *
@@ -53,8 +59,8 @@ object DeviceScan {
         targets: List<PackagePath>,
         workDir: File,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): Map<String, List<String>> {
-        if (targets.isEmpty()) return emptyMap()
+    ): UrlScan {
+        if (targets.isEmpty()) return UrlScan(emptyMap())
         workDir.mkdirs()
 
         if (!hasDeviceTools(adb, serial)) {
@@ -62,10 +68,18 @@ object DeviceScan {
         }
 
         val result = HashMap<String, List<String>>()
+        val processed = HashSet<String>()
+        val failed = HashSet<String>()
         val pendingFallback = ArrayList<String>()
 
         val list = File(workDir, "targets.txt")
         list.writeText(targets.joinToString("\n", postfix = "\n") { "${it.pkg} ${it.path}" })
+
+        // Android builds can ship more than classes15.dex. Keep the explicit
+        // list because several vendor unzip builds do not expand globs.
+        val dexEntries = (1..99).joinToString(" ") {
+            if (it == 1) "classes.dex" else "classes$it.dex"
+        }
 
         val script = File(workDir, "scan.sh")
         script.writeText(
@@ -73,18 +87,20 @@ object DeviceScan {
             #!/system/bin/sh
             TMP=/data/local/tmp/noir_dex.bin
             while read p f; do
-              # Explicit entry names: some vendor `unzip` builds do not expand 'classes*.dex'.
               : > ${'$'}TMP
-              for d in classes.dex classes2.dex classes3.dex classes4.dex classes5.dex \
-                       classes6.dex classes7.dex classes8.dex classes9.dex classes10.dex \
-                       classes11.dex classes12.dex classes13.dex classes14.dex classes15.dex; do
-                unzip -p "${'$'}f" "${'$'}d" 2>/dev/null >> ${'$'}TMP
+              # pm path returns every split APK, not just the base.
+              APKS=${'$'}(pm path "${'$'}p" 2>/dev/null | sed 's/^package://')
+              [ -z "${'$'}APKS" ] && APKS="${'$'}f"
+              for apk in ${'$'}APKS; do
+                for d in $dexEntries; do
+                  unzip -p "${'$'}apk" "${'$'}d" 2>/dev/null >> ${'$'}TMP
+                done
               done
               if [ ! -s ${'$'}TMP ]; then
                 echo "F ${'$'}p"
               else
                 u=${'$'}(strings < ${'$'}TMP | grep -oE 'https?://[A-Za-z0-9._~:/?#@!&()*+,;=%-]+' \
-                    | sort -u | head -400 | tr '\n' ' ')
+                    | sort -u | head -1000 | tr '\n' ' ')
                 [ -n "${'$'}u" ] && echo "R ${'$'}p|${'$'}u"
               fi
               rm -f ${'$'}TMP
@@ -94,25 +110,34 @@ object DeviceScan {
             """.trimIndent()
         )
 
-        adb.push(serial, script, "/data/local/tmp/noir_scan.sh")
-        adb.push(serial, list, "/data/local/tmp/noir_targets.txt")
+        val pushedScript = adb.push(serial, script, "/data/local/tmp/noir_scan.sh")
+        val pushedList = adb.push(serial, list, "/data/local/tmp/noir_targets.txt")
+        if (!pushedScript.ok || !pushedList.ok) {
+            println("  ! could not push the device-side scanner; pulling APKs instead")
+            return urlsByPulling(adb, serial, targets, workDir, onProgress)
+        }
 
         var done = 0
         val total = targets.size
 
         val execution = adb.execStreaming(
             listOf("-s", serial, "shell", "sh /data/local/tmp/noir_scan.sh"),
-            timeoutSec = 0
+            timeoutSec = 1_800
         ) { line ->
             when {
                 line.startsWith(RESULT) -> {
                     val body = line.removePrefix(RESULT)
                     val pkg = body.substringBefore('|')
                     val found = body.substringAfter('|', "").split(' ').filter { it.isNotBlank() }
-                    if (pkg.isNotEmpty() && found.isNotEmpty()) result[pkg] = found
+                    if (pkg.isNotEmpty()) {
+                        processed += pkg
+                        result[pkg] = found
+                    }
                 }
                 line.startsWith(FALLBACK) -> pendingFallback.add(line.removePrefix(FALLBACK).trim())
                 line.startsWith(PROGRESS) -> {
+                    val pkg = line.removePrefix(PROGRESS).trim()
+                    if (pkg.isNotEmpty()) processed += pkg
                     done++
                     onProgress(done, total)
                 }
@@ -133,16 +158,32 @@ object DeviceScan {
         if (pendingFallback.isNotEmpty()) {
             println("  ! ${pendingFallback.size} APK(s) could not be read by the device's unzip; pulling instead")
             val fallbackTargets = targets.filter { it.pkg in pendingFallback }
-            result.putAll(
-                urlsByPulling(adb, serial, fallbackTargets, workDir) { index, count ->
-                    print("\r  pulling $index/$count")
-                    System.out.flush()
-                }
-            )
+            val fallback = urlsByPulling(adb, serial, fallbackTargets, workDir) { index, count ->
+                print("\r  pulling $index/$count")
+                System.out.flush()
+            }
+            result.putAll(fallback.urls)
+            failed.addAll(fallback.failed)
             println()
         }
 
-        return result
+        // A package that reached its P marker but produced no R line is a
+        // successful "no endpoints" result. Missing progress means failure.
+        targets.forEach { target ->
+            when {
+                target.pkg in failed -> Unit
+                target.pkg in result -> Unit
+                target.pkg in processed -> result[target.pkg] = emptyList()
+                else -> failed += target.pkg
+            }
+        }
+        if (execution.code != 0) {
+            targets.forEach { target ->
+                if (target.pkg !in result) failed += target.pkg
+            }
+        }
+
+        return UrlScan(result, failed)
     }
 
     private fun urlsByPulling(
@@ -151,18 +192,40 @@ object DeviceScan {
         targets: List<PackagePath>,
         workDir: File,
         onProgress: (Int, Int) -> Unit = { _, _ -> }
-    ): Map<String, List<String>> {
+    ): UrlScan {
         val result = HashMap<String, List<String>>()
+        val failed = HashSet<String>()
         val apkDir = File(workDir, "apks").apply { mkdirs() }
         targets.forEachIndexed { index, target ->
-            val local = File(apkDir, "${target.pkg}.apk")
-            adb.pull(serial, target.path, local)
-            if (local.exists()) {
-                val found = runCatching { ApkScan.urls(local) }.getOrDefault(emptyList())
-                if (found.isNotEmpty()) result[target.pkg] = found
+            val paths = adb.shell(serial, "pm path ${target.pkg}", timeoutSec = 30).output
+                .lineSequence()
+                .filter { it.startsWith("package:") }
+                .map { it.removePrefix("package:").trim() }
+                .filter { it.isNotEmpty() }
+                .toList()
+                .ifEmpty { listOf(target.path) }
+
+            val found = LinkedHashSet<String>()
+            var complete = true
+            paths.forEachIndexed { split, path ->
+                val local = File(apkDir, "${target.pkg}-$split.apk")
+                local.delete()
+                val pulled = adb.pull(serial, path, local)
+                if (!pulled.ok || !local.isFile) {
+                    complete = false
+                } else {
+                    val urls = runCatching { ApkScan.urls(local) }
+                    if (urls.isSuccess) {
+                        found += urls.getOrDefault(emptyList())
+                    } else {
+                        complete = false
+                    }
+                    local.delete()
+                }
             }
+            if (complete) result[target.pkg] = found.toList() else failed += target.pkg
             onProgress(index + 1, targets.size)
         }
-        return result
+        return UrlScan(result, failed)
     }
 }

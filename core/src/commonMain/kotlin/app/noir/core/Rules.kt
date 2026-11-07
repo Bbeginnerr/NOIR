@@ -15,22 +15,27 @@ object Rules {
 
     val SENSITIVE: List<String> = listOf(
         "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "READ_CONTACTS",
         "READ_SMS",
         "RECEIVE_SMS",
         "READ_CALL_LOG",
         "READ_PHONE_STATE",
+        "READ_PHONE_NUMBERS",
         "READ_PRIVILEGED_PHONE_STATE",
         "RECORD_AUDIO",
         "CAMERA",
+        "BODY_SENSORS",
         "PACKAGE_USAGE_STATS",
         "QUERY_ALL_PACKAGES",
         "GET_ACCOUNTS",
         "READ_CALENDAR",
         "MANAGE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
         "READ_MEDIA_IMAGES",
         "READ_MEDIA_VIDEO",
+        "READ_MEDIA_AUDIO",
         "SYSTEM_ALERT_WINDOW",
         "REQUEST_INSTALL_PACKAGES",
         "FOREGROUND_SERVICE_MEDIA_PROJECTION",
@@ -40,18 +45,23 @@ object Rules {
     )
 
     private val UPLOAD = Regex(
-        "/(report|upload|collect|track|stat|beacon|log)([/?]|$)",
+        "/(report|reports|upload|uploads|collect|collection|track|tracking|tracker|" +
+            "stat|stats|statistic|statistics|beacon|log|logs|logging|analytics|metrics|" +
+            "crash|crashes)([/?]|$)",
         RegexOption.IGNORE_CASE
     )
 
     private val COMMAND = Regex(
-        "/(command|cmd|dispatch|execute|script)([/?]|$)",
+        "/(command|commands|cmd|dispatch|execute|script)([/?]|$)",
         RegexOption.IGNORE_CASE
     )
 
-    fun isUpload(url: String): Boolean = UPLOAD.containsMatchIn(url)
+    /** Only the path is evidence; query parameters often contain unrelated URLs. */
+    private fun pathOf(url: String): String = url.substringBefore('?').substringBefore('#')
 
-    fun isCommand(url: String): Boolean = COMMAND.containsMatchIn(url)
+    fun isUpload(url: String): Boolean = UPLOAD.containsMatchIn(pathOf(url))
+
+    fun isCommand(url: String): Boolean = COMMAND.containsMatchIn(pathOf(url))
 
     fun score(
         permissions: List<String>,

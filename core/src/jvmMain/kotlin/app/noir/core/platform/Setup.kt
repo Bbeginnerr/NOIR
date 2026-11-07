@@ -8,6 +8,8 @@ package app.noir.core.platform
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.zip.ZipFile
 
 /**
@@ -27,12 +29,16 @@ object Setup {
 
     fun download(url: String, dest: File, onProgress: (Long, Long) -> Unit = { _, _ -> }): Boolean {
         var current = URL(url)
-        repeat(6) {
+        var attempts = 0
+        while (attempts < 6) {
+            attempts++
+            if (current.protocol != "https") return false
+
             val conn = current.openConnection() as HttpURLConnection
-            conn.instanceFollowRedirects = true
+            conn.instanceFollowRedirects = false
             conn.connectTimeout = 20_000
             conn.readTimeout = 120_000
-            conn.setRequestProperty("User-Agent", "NOIR/0.1")
+            conn.setRequestProperty("User-Agent", "NOIR/0.4.1")
 
             val code = conn.responseCode
             if (code in 300..399) {
@@ -40,7 +46,7 @@ object Setup {
                 conn.disconnect()
                 if (location.isNullOrBlank()) return false
                 current = URL(current, location)
-                return@repeat
+                continue
             }
             if (code != 200) {
                 conn.disconnect()
@@ -48,19 +54,32 @@ object Setup {
             }
 
             val total = conn.contentLengthLong
-            dest.parentFile?.mkdirs()
-            conn.inputStream.use { input ->
-                dest.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    var read = 0L
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        output.write(buffer, 0, n)
-                        read += n
-                        onProgress(read, total)
+            val parent = dest.absoluteFile.parentFile ?: File(".").absoluteFile
+            parent.mkdirs()
+            val part = File(parent, "${dest.name}.part")
+            try {
+                conn.inputStream.use { input ->
+                    part.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var read = 0L
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            output.write(buffer, 0, n)
+                            read += n
+                            onProgress(read, total)
+                        }
                     }
                 }
+                Files.move(
+                    part.toPath(),
+                    dest.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (e: Exception) {
+                part.delete()
+                conn.disconnect()
+                return false
             }
             conn.disconnect()
             return true
@@ -70,9 +89,13 @@ object Setup {
 
     fun unzip(zip: File, dest: File) {
         dest.mkdirs()
+        val root = dest.canonicalFile.toPath()
         ZipFile(zip).use { archive ->
             archive.entries().asSequence().forEach { entry ->
-                val target = File(dest, entry.name)
+                val target = File(dest, entry.name).canonicalFile
+                if (!target.toPath().startsWith(root)) {
+                    throw IllegalArgumentException("unsafe zip entry: ${entry.name}")
+                }
                 if (entry.isDirectory) {
                     target.mkdirs()
                 } else {

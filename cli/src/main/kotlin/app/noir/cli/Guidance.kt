@@ -11,15 +11,24 @@ import app.noir.core.Tui
 /** Human-friendly text blocks: every failure should end with an action. */
 object Guidance {
 
+    private fun v() = if (ASCII) "|" else "│"
+    private fun h() = if (ASCII) "-" else "─"
+    private fun asciiText(text: String) = if (ASCII) {
+        text.replace("•", "-").replace("→", "->").replace("—", "-").replace("·", "-")
+    } else {
+        text
+    }
 
     fun about(version: String): String {
-        val total = (Tui.terminalColumns() - 2).coerceIn(50, 100)
+        val total = (Tui.terminalColumns() - 2).coerceIn(40, 100)
         val inner = total - 4
 
-        fun row(text: String) = "│ " + pad(text, inner) + " │"
+        fun row(text: String) = v() + " " + pad(text, inner) + " " + v()
 
         val sb = StringBuilder()
-        sb.append("╭").append("─".repeat(total - 2)).append("╮").append('\n')
+        val tl = if (ASCII) "+" else "╭"
+        val tr = if (ASCII) "+" else "╮"
+        sb.append(tl).append(h().repeat(total - 2)).append(tr).append('\n')
 
         val logo = listOf(
             "  ███╗   ██╗ ██████╗ ██╗██████╗ ",
@@ -29,7 +38,7 @@ object Guidance {
             "  ██║ ╚████║╚██████╔╝██║██║  ██║",
             "  ╚═╝  ╚═══╝ ╚═════╝ ╚═╝╚═╝  ╚═╝"
         )
-        if (inner >= 40) {
+        if (!ASCII && inner >= 40) {
             logo.forEach { sb.append(row(it)).append('\n') }
         } else {
             sb.append(row("  NOIR")).append('\n')
@@ -39,7 +48,7 @@ object Guidance {
 
         fun field(label: String, value: String) {
             val prefix = "  " + label.padEnd(10)
-            val lines = wrap(value, inner - prefix.length)
+            val lines = wrap(asciiText(value), inner - prefix.length)
             if (lines.isEmpty()) {
                 sb.append(row(prefix.trimEnd())).append('\n')
                 return
@@ -72,7 +81,9 @@ object Guidance {
             sb.append(row("    " + cmd.padEnd(18) + desc)).append('\n')
         }
 
-        sb.append('╰').append("─".repeat(total - 2)).append('╯')
+        val bl = if (ASCII) "+" else "╰"
+        val br = if (ASCII) "+" else "╯"
+        sb.append(bl).append(h().repeat(total - 2)).append(br)
         return sb.toString()
     }
 
@@ -110,7 +121,7 @@ object Guidance {
         return guideBox(if (lang == Lang.EN) "no device detected" else "没有检测到设备", if (lang == Lang.EN) en else zh)
     }
 
-    fun unauthorizedGuide(lang: Lang = LANG): String = if (lang == Lang.EN) {
+    fun unauthorizedGuide(lang: Lang = LANG): String = asciiText(if (lang == Lang.EN) {
         """
         |Device connected, but not authorised.
         |
@@ -126,9 +137,9 @@ object Guidance {
         |  • 没弹窗：开发者选项 → 撤销 USB 调试授权 → 重新插拔
         |  • 仍不行：开发者选项 → 关闭再打开 USB 调试
         """.trimMargin()
-    }
+    })
 
-    fun adbMissing(lang: Lang = LANG): String = if (lang == Lang.EN) {
+    fun adbMissing(lang: Lang = LANG): String = asciiText(if (lang == Lang.EN) {
         """
         |  • macOS: brew install --cask android-platform-tools
         |  • Windows: scoop install adb  or  https://developer.android.com/tools/releases/platform-tools
@@ -142,9 +153,9 @@ object Guidance {
         |  • Debian/Ubuntu：sudo apt install adb
         |  • 或者让 NOIR 自己下载：noir setup
         """.trimMargin()
-    }
+    })
 
-    fun jadxMissing(lang: Lang = LANG): String = if (lang == Lang.EN) {
+    fun jadxMissing(lang: Lang = LANG): String = asciiText(if (lang == Lang.EN) {
         """
         |  • macOS: brew install jadx
         |  • Windows: scoop install jadx
@@ -158,41 +169,50 @@ object Guidance {
         |  • Debian/Ubuntu：apt install jadx
         |  • 或者让 NOIR 自己下载：noir setup
         """.trimMargin()
-    }
+    })
 
     fun error(title: String, hint: String? = null): String {
-        val total = (Tui.terminalColumns() - 2).coerceIn(50, 100)
+        val total = (Tui.terminalColumns() - 2).coerceIn(40, 100)
         val inner = total - 4
 
-        fun row(text: String) = "│ " + pad(text, inner) + " │"
+        fun row(text: String) = v() + " " + pad(text, inner) + " " + v()
 
         val sb = StringBuilder()
-        sb.append("╭─ ERROR ").append("─".repeat(total - 10)).append("╮").append('\n')
-        wrap(title, inner).forEach { sb.append(row(it)).append('\n') }
-        if (hint != null) {
-            sb.append('├').append("─".repeat(total - 2)).append('┤').append('\n')
-            wrap(hint, inner).forEach { sb.append(row(it)).append('\n') }
+        if (ASCII) {
+            sb.append("+- ERROR ").append("-".repeat(maxOf(0, total - 10))).append("+").append('\n')
+        } else {
+            sb.append("╭─ ERROR ").append("─".repeat(total - 10)).append("╮").append('\n')
         }
-        sb.append('╰').append("─".repeat(total - 2)).append('╯')
+        wrap(asciiText(title), inner).forEach { sb.append(row(it)).append('\n') }
+        if (hint != null) {
+            if (ASCII) sb.append("+").append("-".repeat(total - 2)).append("+").append('\n')
+            else sb.append('├').append("─".repeat(total - 2)).append('┤').append('\n')
+            wrap(asciiText(hint), inner).forEach { sb.append(row(it)).append('\n') }
+        }
+        if (ASCII) sb.append("+").append("-".repeat(total - 2)).append("+")
+        else sb.append('╰').append("─".repeat(total - 2)).append('╯')
         return sb.toString()
     }
 
     private fun guideBox(title: String, rows: List<String>): String {
-        val total = (Tui.terminalColumns() - 2).coerceIn(50, 100)
+        val total = (Tui.terminalColumns() - 2).coerceIn(40, 100)
         val inner = total - 4
-        fun row(text: String) = "│ " + pad(text, inner) + " │"
+        fun row(text: String) = v() + " " + pad(text, inner) + " " + v()
 
         val sb = StringBuilder()
-        val head = "╭─ $title "
-        sb.append(head).append("─".repeat(maxOf(0, total - width(head) - 1))).append("╮\n")
+        val head = (if (ASCII) "+- " else "╭─ ") + title + " "
+        val tr = if (ASCII) "+" else "╮"
+        sb.append(head).append(h().repeat(maxOf(0, total - width(head) - 1))).append(tr).append('\n')
         rows.forEach { text ->
             if (text.isEmpty()) {
                 sb.append(row("")).append('\n')
             } else {
-                wrap(text, inner).forEach { sb.append(row(it)).append('\n') }
+                wrap(asciiText(text), inner).forEach { sb.append(row(it)).append('\n') }
             }
         }
-        sb.append('╰').append("─".repeat(total - 2)).append('╯')
+        val bl = if (ASCII) "+" else "╰"
+        val br = if (ASCII) "+" else "╯"
+        sb.append(bl).append(h().repeat(total - 2)).append(br)
         return sb.toString()
     }
 

@@ -105,7 +105,7 @@
   device   <span class="v">2509FPN0BC</span> · android 16
   scan     <span class="bar"></span> 501/501
   flagged  <span class="v">256</span> apps · 31 tracker domains
-  plan     <span class="d">19 app-ops · rollback.txt</span><span class="caret"></span></pre>
+  plan     <span class="d">16 app-ops · rollback.txt</span><span class="caret"></span></pre>
   </section>
 
   <section class="reveal" id="what">
@@ -156,7 +156,7 @@
         <span class="demo-size" id="demo-size">100×18 · simulated</span>
         <span class="demo-pan">tap Y · swipe →</span>
       </div>
-      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="simulated terminal output"><div class="tui-fallback">JavaScript is off — run <code>noir</code> in your terminal to see this flow.</div></div>
+      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-live="polite" aria-label="simulated terminal output"><div class="tui-fallback">JavaScript is off — run <code>noir</code> in your terminal to see this flow.</div></div>
       <div class="demo-actions">
         <button id="demo-reset" type="button">restart demo</button>
         <span class="demo-note">click Y / N in the terminal · simulated</span>
@@ -234,7 +234,7 @@
       </details>
       <details>
         <summary>What is DeepScan?</summary>
-        <p><code>noir deepscan</code> pulls the riskiest APKs, runs jadx in parallel, and scores code-level signals: <code>Runtime.exec</code>, dynamic dex loading, accessibility rewriting, screen capture, device-id reads and known SDKs. It is a triage tool, not a decompiler replacement.</p>
+        <p><code>noir deepscan</code> pulls the riskiest APKs, runs jadx in parallel, and scores code-level signals: <code>Runtime.getRuntime().exec</code>, dynamic dex loading, accessibility rewriting, screen capture, device-id reads and known SDKs. It is a triage tool, not a decompiler replacement.</p>
       </details>
       <details>
         <summary>Does it work on any Android?</summary>
@@ -256,10 +256,10 @@
         <tr><th></th><th>NOIR</th><th>Permission manager</th><th>Tracker database</th></tr>
       </thead>
       <tbody>
-        <tr><td>sees</td><td>endpoints inside this APK</td><td>declared permissions</td><td>app-level labels</td></tr>
-        <tr><td>answers</td><td>which data can reach which host</td><td>who asked for what</td><td>“this app is known to track”</td></tr>
-        <tr><td>acts</td><td>reversible app-ops, DNS tiers</td><td>opens settings</td><td>nothing</td></tr>
-        <tr><td>needs</td><td>adb, no root</td><td>nothing</td><td>nothing</td></tr>
+        <tr><th scope="row">sees</th><td>endpoints inside this APK</td><td>declared permissions</td><td>app-level labels</td></tr>
+        <tr><th scope="row">answers</th><td>which data can reach which host</td><td>who asked for what</td><td>“this app is known to track”</td></tr>
+        <tr><th scope="row">acts</th><td>reversible app-ops, DNS tiers</td><td>opens settings</td><td>nothing</td></tr>
+        <tr><th scope="row">needs</th><td>adb, no root</td><td>nothing</td><td>nothing</td></tr>
       </tbody>
     </table>
     <p style="margin-top:18px">It is also not an antivirus, not a firewall, and not a cloud service. It is a static audit you run yourself.</p>

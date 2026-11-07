@@ -34,7 +34,7 @@
 
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png">
-<link rel="manifest" href="../assets/manifest.webmanifest">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="../assets/style.css">
 <script src="../assets/app.js" defer></script>
 
@@ -97,7 +97,7 @@
       <a class="btn primary" id="download-primary" href="https://github.com/Verlintas/NOIR/releases/latest">下载最新版</a>
       <a class="btn" id="download-all" href="https://github.com/Verlintas/NOIR/releases">全部版本</a>
       <a class="btn" href="https://github.com/Verlintas/NOIR">源码</a>
-      <a class="stars" id="stars" href="https://github.com/Verlintas/NOIR" hidden>★ <b>—</b> stars</a>
+      <a class="stars" id="stars" href="https://github.com/Verlintas/NOIR" hidden>★ <b>—</b> 星标</a>
     </div>
     <p class="release" id="release-meta">最新版本 · macOS / Windows / Linux · MIT</p>
 
@@ -105,7 +105,7 @@
   device   <span class="v">2509FPN0BC</span> · android 16
   scan     <span class="bar"></span> 501/501
   flagged  <span class="v">256</span> apps · 31 tracker domains
-  plan     <span class="d">19 app-ops · rollback.txt</span><span class="caret"></span></pre>
+  plan     <span class="d">16 app-ops · rollback.txt</span><span class="caret"></span></pre>
   </section>
 
   <section class="reveal" id="what">
@@ -156,7 +156,7 @@
         <span class="demo-size" id="demo-size">100×18 · 模拟</span>
         <span class="demo-pan">点 Y · 横滑 →</span>
       </div>
-      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-label="模拟的终端输出"><div class="tui-fallback">JavaScript 已关闭——在终端运行 <code>noir</code> 可查看完整流程。</div></div>
+      <div class="demo-body" id="demo-body" role="region" tabindex="0" aria-live="polite" aria-label="模拟的终端输出"><div class="tui-fallback">JavaScript 已关闭——在终端运行 <code>noir</code> 可查看完整流程。</div></div>
       <div class="demo-actions">
         <button id="demo-reset" type="button">重新演示</button>
         <span class="demo-note">在终端里点 Y / N · 模拟输出</span>
@@ -234,7 +234,7 @@
       </details>
       <details>
         <summary>DeepScan 是什么？</summary>
-        <p><code>noir deepscan</code> 拉取高风险 APK，并行跑 jadx，统计代码级信号：<code>Runtime.exec</code>、动态 dex 加载、无障碍改写、屏幕捕获、设备标识读取和已知 SDK。它是分诊工具，不是反编译器替代品。</p>
+        <p><code>noir deepscan</code> 拉取高风险 APK，并行跑 jadx，统计代码级信号：<code>Runtime.getRuntime().exec</code>、动态 dex 加载、无障碍改写、屏幕捕获、设备标识读取和已知 SDK。它是分诊工具，不是反编译器替代品。</p>
       </details>
       <details>
         <summary>支持所有 Android 吗？</summary>
@@ -256,10 +256,10 @@
         <tr><th></th><th>NOIR</th><th>权限管理器</th><th>追踪器数据库</th></tr>
       </thead>
       <tbody>
-        <tr><td>看到</td><td>这个 APK 里的端点</td><td>声明的权限</td><td>应用级标签</td></tr>
-        <tr><td>回答</td><td>哪类数据能到达哪个域名</td><td>谁申请了什么</td><td>“这个应用已知会追踪”</td></tr>
-        <tr><td>处置</td><td>可回滚 app-ops、DNS 分级</td><td>打开设置</td><td>什么都不做</td></tr>
-        <tr><td>依赖</td><td>adb，无需 root</td><td>无</td><td>无</td></tr>
+        <tr><th scope="row">看到</th><td>这个 APK 里的端点</td><td>声明的权限</td><td>应用级标签</td></tr>
+        <tr><th scope="row">回答</th><td>哪类数据能到达哪个域名</td><td>谁申请了什么</td><td>“这个应用已知会追踪”</td></tr>
+        <tr><th scope="row">处置</th><td>可回滚 app-ops、DNS 分级</td><td>打开设置</td><td>什么都不做</td></tr>
+        <tr><th scope="row">依赖</th><td>adb，无需 root</td><td>无</td><td>无</td></tr>
       </tbody>
     </table>
     <p style="margin-top:18px">它也不是杀毒软件、不是防火墙、不是云服务。它就是你自己跑的静态审计。</p>

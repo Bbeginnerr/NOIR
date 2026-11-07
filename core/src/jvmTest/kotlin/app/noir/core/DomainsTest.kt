@@ -36,6 +36,15 @@ class DomainsTest {
     @Test
     fun `status is not mistaken for stat`() {
         assertEquals(DomainClass.REVIEW, Domains.classify("status.example.com"))
+        assertEquals(DomainClass.REVIEW, Domains.classify("static.example.com"))
+        assertEquals(DomainClass.REVIEW, Domains.classify("biometrics.example.com"))
+        assertEquals(DomainClass.REVIEW, Domains.classify("soundtrack.example.com"))
+    }
+
+    @Test
+    fun `tracker labels win over functional substrings`() {
+        assertEquals(DomainClass.TRACKER, Domains.classify("tracking.googleapis.evil.com"))
+        assertEquals(DomainClass.FUNCTIONAL, Domains.classify("android.googleapis.com"))
     }
 
     @Test

@@ -66,6 +66,18 @@ class DumpsysTest {
     }
 
     @Test
+    fun `accepts the legacy userId field`() {
+        val meta = Dumpsys.parse(
+            dump(
+                "  Package [com.example] (abc):",
+                "    userId=10200",
+                "    flags=[ HAS_CODE ]"
+            )
+        ).getValue("com.example")
+        assertEquals("10200", meta.appId)
+    }
+
+    @Test
     fun `marks packages created only by the shared section as system when appId is 1000`() {
         val text = dump(
             "Shared users:",
@@ -81,6 +93,7 @@ class DumpsysTest {
         assertTrue(meta.isSystem)
         assertTrue(meta.perms.contains("INTERNET"))
         assertEquals("1000", meta.appId)
+        assertEquals("android.uid.system", meta.sharedUser)
     }
 
     @Test

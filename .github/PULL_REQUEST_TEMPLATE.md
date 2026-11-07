@@ -9,13 +9,14 @@
 ## How to test
 
 ```bash
-./gradlew :core:jvmTest :cli:installDist
+./gradlew :core:jvmTest :cli:test :cli:installDist
 ./cli/build/install/noir/bin/noir scan --only 'com\.example\.'
 ```
 
 ## Checklist
 
 - [ ] `:core:jvmTest` passes
+- [ ] `:cli:test` passes
 - [ ] `:cli:installDist` passes
 - [ ] dashboard changes survive `COLUMNS=50`
 - [ ] no new network calls

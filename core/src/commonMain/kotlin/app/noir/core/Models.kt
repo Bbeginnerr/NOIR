@@ -17,7 +17,9 @@ data class ReportMeta(
     val build: String = "",
     val fingerprint: String = "",
     val user: String = "",
-    val generatedAt: String = ""
+    val generatedAt: String = "",
+    val minScore: Int? = null,
+    val limit: Int? = null
 )
 
 /** One installed application, reduced to what matters for a leak audit. */

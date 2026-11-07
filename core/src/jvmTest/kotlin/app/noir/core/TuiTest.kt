@@ -60,6 +60,12 @@ class TuiTest {
     }
 
     @Test
+    fun `padding uses display columns for cjk`() {
+        assertEquals(12, Tui.visibleWidth(Tui.padRight("遥测/统计", 12)))
+        assertEquals("abc...", Tui.clip("abcdefgh", 6, ascii = true))
+    }
+
+    @Test
     fun `english dashboard contains no chinese characters`() {
         val output = Tui.dashboard(
             device = Device("serial", "device", "Pixel", "product"),

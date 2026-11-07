@@ -15,24 +15,42 @@ data class JadxHit(val file: String, val line: Int, val text: String)
 class Jadx(private val bin: String = System.getenv("JADX") ?: "jadx") {
 
     fun available(): Boolean = try {
-        val process = ProcessBuilder(Exec.argv(bin, listOf("--version"))).redirectErrorStream(true).start()
-        val finished = process.waitFor(15, TimeUnit.SECONDS)
-        if (!finished) process.destroyForcibly()
-        process.inputStream.close()
-        finished
+        run(listOf("--version"), 15) == 0
     } catch (e: Exception) {
         false
     }
 
-    fun decompile(apk: File, outDir: File, noRes: Boolean = true): Int {
+    fun decompile(apk: File, outDir: File, noRes: Boolean = true, timeoutSec: Long = 1_800): Int {
         outDir.mkdirs()
-        val args = mutableListOf(bin, "-d", outDir.absolutePath)
+        val args = mutableListOf("-d", outDir.absolutePath)
         if (noRes) args += "--no-res"
         args += apk.absolutePath
+        return run(args, timeoutSec)
+    }
 
-        val process = ProcessBuilder(Exec.argv(bin, args.drop(1))).redirectErrorStream(true).start()
-        process.inputStream.bufferedReader().use { it.readText() }
-        process.waitFor()
+    /** Runs jadx with a real deadline; a hung decompiler must not hang NOIR. */
+    private fun run(args: List<String>, timeoutSec: Long): Int {
+        val process = ProcessBuilder(Exec.argv(bin, args)).redirectErrorStream(true).start()
+        val reader = Thread {
+            try {
+                process.inputStream.bufferedReader().use { stream ->
+                    while (stream.readLine() != null) {
+                        // Drain stdout/stderr so the child cannot block on a full pipe.
+                    }
+                }
+            } catch (_: Exception) {
+                // Process was destroyed after the deadline.
+            }
+        }
+        reader.isDaemon = true
+        reader.start()
+        val finished = process.waitFor(timeoutSec, TimeUnit.SECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            reader.join(2_000)
+            return -1
+        }
+        reader.join(2_000)
         return process.exitValue()
     }
 

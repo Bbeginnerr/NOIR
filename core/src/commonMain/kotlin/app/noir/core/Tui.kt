@@ -18,22 +18,23 @@ object Tui {
     fun visibleWidth(text: String): Int = displayWidth(text)
 
     /** Cuts a plain (colourless) line to the terminal width. */
-    fun clip(text: String, columns: Int = terminalColumns()): String {
+    fun clip(text: String, columns: Int = terminalColumns(), ascii: Boolean = false): String {
         if (displayWidth(text) <= columns) return text
+        val suffix = if (ascii) "..." else "…"
+        val budget = columns - displayWidth(suffix)
         val sb = StringBuilder()
         var used = 0
         for (c in text) {
             val w = charWidth(c)
-            if (used + w > columns - 1) break
+            if (used + w > budget) break
             sb.append(c)
             used += w
         }
-        return sb.append('…').toString()
+        return sb.append(suffix).toString()
     }
 
-    /** Terminal width, from COLUMNS when available. */
-    fun terminalColumns(): Int =
-        System.getenv("COLUMNS")?.toIntOrNull()?.takeIf { it in 40..400 } ?: 80
+    /** Terminal width, from the platform implementation. */
+    fun terminalColumns(): Int = app.noir.core.platform.terminalColumns()
 
     private val LOGO = listOf(
         "███╗   ██╗ ██████╗ ██╗██████╗ ",
@@ -57,9 +58,11 @@ object Tui {
     ): String {
         val s = Style(color && !ascii)
         val sb = StringBuilder()
+        val zh = lang == Lang.ZH
+        fun l(en: String, cn: String) = if (zh) cn else en
 
         // never wider than the terminal, never absurdly wide on a big screen
-        val totalWidth = (terminalColumns() - 2).coerceIn(50, 100)
+        val totalWidth = (terminalColumns() - 2).coerceIn(40, 100)
         val W = totalWidth - 2
 
         val cornerTL = if (ascii) "+" else "╭"
@@ -76,7 +79,7 @@ object Tui {
         }
 
         fun line(content: String = "") {
-            val safe = if (displayWidth(content) > W) truncate(visible(content), W) else content
+            val safe = if (displayWidth(content) > W) truncate(visible(content), W, ascii) else content
             val pad = W - displayWidth(safe)
             sb.append(vbar).append(safe)
             if (pad > 0) sb.append(" ".repeat(pad))
@@ -111,14 +114,18 @@ object Tui {
         }
 
         // ── device ─────────────────────────────────────────────────────────
-        section("DEVICE")
-        line("  ${s.dim(padRight("model", 9))} ${device.model.ifBlank { "unknown" }}")
-        line("  ${s.dim(padRight("device", 9))} ${device.serial}  ${s.dim("·")}  ${device.product.ifBlank { "—" }}")
-        line("  ${s.dim(padRight("android", 9))} $android  ${s.dim("·")}  $installed installed  ${s.dim("·")}  ${s.bold(apps.size.toString())} flagged")
+        section(l("DEVICE", "设备"))
+        line("  ${s.dim(padRight(l("model", "型号"), 9))} ${device.model.ifBlank { l("unknown", "未知") }}")
+        line("  ${s.dim(padRight(l("device", "设备"), 9))} ${device.serial}  ${s.dim("·")}  ${device.product.ifBlank { "—" }}")
+        line(
+            "  ${s.dim(padRight(l("android", "系统"), 9))} $android  ${s.dim("·")}  " +
+                "$installed ${l("installed", "已安装")}  ${s.dim("·")}  " +
+                "${s.bold(apps.size.toString())} ${l("flagged", "已标记")}"
+        )
         line()
 
         // ── exposure ───────────────────────────────────────────────────────
-        section("EXPOSURE")
+        section(l("EXPOSURE", "暴露"))
         val uncategorised = apps.count { it.category == Category.OTHER }
         val grouped = apps.filter { it.category != Category.OTHER }
             .groupBy { it.category }.mapValues { it.value.size }
@@ -141,13 +148,13 @@ object Tui {
         line()
 
         // ── findings ───────────────────────────────────────────────────────
-        section("TOP FINDINGS")
+        section(l("TOP FINDINGS", "高分应用"))
         val pkgWidth = (W - 32).coerceIn(8, 44)
         line(
-            "  ${s.dim(padLeft("#", 2))} ${s.dim(padLeft("SCORE", 5))}  " +
-                s.dim(padRight("CATEGORY", 10)) + "  " +
-                s.dim(padRight("PACKAGE", pkgWidth)) + "  " +
-                s.dim(padLeft("UP", 2)) + " " + s.dim(padLeft("CMD", 3))
+            "  ${s.dim(padLeft("#", 2))} ${s.dim(padLeft(l("SCORE", "分数"), 5))}  " +
+                s.dim(padRight(l("CATEGORY", "类别"), 10)) + "  " +
+                s.dim(padRight(l("PACKAGE", "包名"), pkgWidth)) + "  " +
+                s.dim(padLeft(l("UP", "上报"), 2)) + " " + s.dim(padLeft(l("CMD", "命令"), 3))
         )
         apps.take(10).forEachIndexed { index, app ->
             val score = s.risk(app.score, padLeft(app.score.toString(), 5))
@@ -162,12 +169,12 @@ object Tui {
         line()
 
         // ── plan ───────────────────────────────────────────────────────────
-        section("PLAN")
+        section(l("PLAN", "计划"))
         val high = recommendations.count { it.risk == "HIGH" }
         val med = recommendations.count { it.risk == "MED" }
         val low = recommendations.count { it.risk == "LOW" }
         line(
-            "  ${s.dim("risk")}      " +
+            "  ${s.dim(l("risk", "风险"))}      " +
                 s.fg(248, 113, 113, "● HIGH $high") + "   " +
                 s.fg(251, 191, 36, "● MED $med") + "   " +
                 s.fg(52, 211, 153, "● LOW $low")
@@ -181,9 +188,13 @@ object Tui {
             val shown = byAction.take(3).joinToString("   ") { (label, count) -> "$label $count" }
             val rest = byAction.size - 3
             val suffix = if (rest > 0) "   ${s.dim("+$rest more")}" else ""
-            line("  ${s.dim("actions")}   $shown$suffix")
+            line("  ${s.dim(l("actions", "动作"))}   $shown$suffix")
         }
-        line("  ${s.dim("auto-safe")} ${s.fg(52, 211, 153, recommendations.count { it.autoSafe }.toString())} ${s.dim("reversible appops, rollback written next to the report")}")
+        line(
+            "  ${s.dim(l("auto-safe", "可自动"))} " +
+                "${s.fg(52, 211, 153, recommendations.count { it.autoSafe }.toString())} " +
+                s.dim(l("reversible appops, rollback written next to the report", "可回滚 appops，回滚命令写在报告旁"))
+        )
         line()
 
         border(cornerBL, cornerBR)
@@ -247,22 +258,24 @@ object Tui {
         return if (pad > 0) " ".repeat(pad) + s else s
     }
 
-    private fun padRight(s: String, width: Int): String {
+    fun padRight(s: String, width: Int): String {
         val pad = width - displayWidth(s)
         return if (pad > 0) s + " ".repeat(pad) else s
     }
 
-    private fun truncate(s: String, width: Int): String {
+    private fun truncate(s: String, width: Int, ascii: Boolean = false): String {
         if (displayWidth(s) <= width) return s
+        val suffix = if (ascii) "..." else "…"
+        val budget = width - displayWidth(suffix)
         val sb = StringBuilder()
         var used = 0
         for (c in s) {
             val w = charWidth(c)
-            if (used + w > width - 1) break
+            if (used + w > budget) break
             sb.append(c)
             used += w
         }
-        return sb.append('…').toString()
+        return sb.append(suffix).toString()
     }
 
     private fun displayWidth(s: String): Int = visible(s).sumOf { charWidth(it) }
